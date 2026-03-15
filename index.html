@@ -823,10 +823,8 @@ function initAdmin() { setupASel(); goTab('ah'); renderSites(); renderWorkers();
 
 function startLiveAH() {
   if(liveUnsub) { liveUnsub(); liveUnsub=null; }
-  const today=new Date(); today.setHours(0,0,0,0);
-  // 오늘 기록 실시간 구독
+  // 인덱스 없이 전체 구독 후 JS에서 오늘 날짜 필터링
   liveUnsub = C.records()
-    .where('checkIn', '>=', today.toISOString())
     .onSnapshot(snap=>{
       cachedRecords = snap.docs.map(d=>({id:d.id,...d.data()}));
       renderAH();
@@ -892,11 +890,13 @@ async function renderRec() {
   const el=document.getElementById('rec-list');
   el.innerHTML='<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">불러오는 중...</div>';
   try {
-    let q=C.records().orderBy('checkIn','desc');
-    if(df) { q=q.where('checkIn','>=',df+'T00:00:00.000Z').where('checkIn','<=',df+'T23:59:59.999Z'); }
-    if(sf) q=q.where('siteId','==',sf);
-    const snap=await q.limit(50).get();
-    const recs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    // 인덱스 없이 전체 가져와서 JS 필터링
+    const snap=await C.records().get();
+    let recs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(df) recs=recs.filter(r=>r.checkIn&&r.checkIn.slice(0,10)===df);
+    if(sf) recs=recs.filter(r=>r.siteId===sf);
+    recs.sort((a,b)=>b.checkIn?.localeCompare(a.checkIn||'')||0);
+    recs=recs.slice(0,50);
     if(!recs.length) { el.innerHTML='<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">해당 조건의 기록 없음</div></div>'; return; }
     el.innerHTML=recs.map(r=>{
       const done=Object.values(r.tasks||{}).filter(v=>v).length;
