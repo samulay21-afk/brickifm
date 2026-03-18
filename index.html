@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="브릭IFM">
-<link id="pwa-manifest" rel="manifest">
+<link rel="manifest" href="./manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
 <!-- Firebase CDN v9 compat -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -485,9 +485,10 @@ const wc=i=>WC[i%WC.length];
 const ini=n=>n?n.slice(0,1):'?';
 
 let role=null, cWorker=null, loginRole='admin', selW=null, pinBuf='';
+let autoLoginWorker=null; // URL 파라미터로 자동 선택된 근로자
 let sess=null, pTab='b', lastGPS=null;
 let adminPin='0000';
-let cachedSites=[], cachedWorkers=[], cachedRecords=[];
+let cachedSites=[], cachedWorkers=[], cachedRecords=[], cachedSessions=[];
 let liveUnsub=null; // firestore live listener
 
 // ══════════════════════════════════════
@@ -496,15 +497,12 @@ let liveUnsub=null; // firestore live listener
 window.onload = async () => {
   setSyncDot('off');
   try {
-    // load admin PIN from Firestore
     const cfgDoc = await C.config().doc('settings').get();
     if (cfgDoc.exists && cfgDoc.data().adminPin) {
       adminPin = cfgDoc.data().adminPin;
     } else {
-      // first run: set default
       await C.config().doc('settings').set({ adminPin: '0000' });
     }
-    // load sites & workers for login screen
     const [sitesSnap, workersSnap] = await Promise.all([
       C.sites().orderBy('name').get(),
       C.workers().orderBy('name').get(),
@@ -512,16 +510,36 @@ window.onload = async () => {
     cachedSites = sitesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     cachedWorkers = workersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // restore local session
+    // 로컬 세션 복원 (날짜 다르면 버림)
     const savedSess = JSON.parse(localStorage.getItem('sess') || 'null');
-    if (savedSess && savedSess.checkIn && !savedSess.checkOut) sess = savedSess;
+    if (savedSess && savedSess.checkIn && !savedSess.checkOut) {
+      const sessDate = savedSess.checkIn.slice(0,10);
+      const today = new Date().toISOString().slice(0,10);
+      if (sessDate === today) { sess = savedSess; }
+      else { localStorage.removeItem('sess'); } // 날짜 다르면 폐기
+    }
+
+    // URL 파라미터로 근로자 자동 선택 (?w=근로자ID)
+    const urlParams = new URLSearchParams(window.location.search);
+    const workerIdParam = urlParams.get('w');
+    if (workerIdParam) {
+      const found = cachedWorkers.find(x => x.id === workerIdParam);
+      if (found) {
+        autoLoginWorker = found;
+        // 근로자 탭 자동 선택
+        loginRole = 'worker';
+        document.getElementById('rt-admin').classList.remove('on');
+        document.getElementById('rt-worker').classList.add('on');
+        document.getElementById('wsec').style.display = 'none'; // 목록 숨김
+        document.getElementById('plbl').textContent = `${found.name} PIN 입력`;
+      }
+    }
 
     setSyncDot('on');
     showScreen('s-login');
   } catch(e) {
     setSyncDot('err');
     console.error(e);
-    // offline fallback
     showScreen('s-login');
   }
   startGPS();
@@ -580,8 +598,10 @@ function tryLogin() {
     if(pinBuf===adminPin) { role='admin'; enterApp(); }
     else loginErr();
   } else {
-    if(!selW) { toast('근로자를 먼저 선택하세요','wa'); pinBuf=''; updPD([]); return; }
-    if(pinBuf===selW.pin) { role='worker'; cWorker=selW; enterApp(); }
+    // URL 파라미터로 자동 선택된 근로자 우선 사용
+    const target = autoLoginWorker || selW;
+    if(!target) { toast('근로자를 먼저 선택하세요','wa'); pinBuf=''; updPD([]); return; }
+    if(pinBuf===target.pin) { role='worker'; cWorker=target; enterApp(); }
     else loginErr();
   }
 }
@@ -599,6 +619,21 @@ function enterApp() {
 function logout() {
   if(liveUnsub) { liveUnsub(); liveUnsub=null; }
   role=null; cWorker=null; pinBuf=''; updPD([]); selW=null; loginRole='admin';
+  autoLoginWorker=null;
+  // URL 파라미터가 있으면 유지 (재로그인 편의)
+  const urlParams = new URLSearchParams(window.location.search);
+  const wParam = urlParams.get('w');
+  if(wParam) {
+    const found = cachedWorkers.find(x=>x.id===wParam);
+    if(found) {
+      autoLoginWorker=found; loginRole='worker';
+      document.getElementById('rt-worker').classList.add('on');
+      document.getElementById('rt-admin').classList.remove('on');
+      document.getElementById('wsec').style.display='none';
+      document.getElementById('plbl').textContent=`${found.name} PIN 입력`;
+      showScreen('s-login'); return;
+    }
+  }
   document.getElementById('rt-admin').classList.add('on');
   document.getElementById('rt-worker').classList.remove('on');
   document.getElementById('wsec').style.display='none';
@@ -823,12 +858,17 @@ function initAdmin() { setupASel(); goTab('ah'); renderSites(); renderWorkers();
 
 function startLiveAH() {
   if(liveUnsub) { liveUnsub(); liveUnsub=null; }
-  // 인덱스 없이 전체 구독 후 JS에서 오늘 날짜 필터링
-  liveUnsub = C.records()
-    .onSnapshot(snap=>{
-      cachedRecords = snap.docs.map(d=>({id:d.id,...d.data()}));
-      renderAH();
-    }, err=>console.warn('live err',err));
+  // records(완료) + sessions(근무중) 모두 실시간 구독
+  let unsubRecords = null, unsubSessions = null;
+  unsubRecords = C.records().onSnapshot(snap=>{
+    cachedRecords = snap.docs.map(d=>({id:d.id,...d.data(),_type:'done'}));
+    renderAH();
+  }, err=>console.warn('records err',err));
+  unsubSessions = C.sessions().onSnapshot(snap=>{
+    cachedSessions = snap.docs.map(d=>({id:d.id,...d.data(),_type:'active'}));
+    renderAH();
+  }, err=>console.warn('sessions err',err));
+  liveUnsub = () => { unsubRecords&&unsubRecords(); unsubSessions&&unsubSessions(); };
 }
 
 function setupASel() {
@@ -839,8 +879,11 @@ function setupASel() {
 function renderAH() {
   const sf=document.getElementById('asite-sel')?.value;
   const today=new Date().toDateString();
-  const tr=cachedRecords.filter(r=>new Date(r.checkIn).toDateString()===today&&(!sf||r.siteId===sf));
-  const cout=tr.filter(r=>r.checkOut).length, working=tr.filter(r=>!r.checkOut).length;
+  // 완료 기록 + 현재 근무중 세션 합산
+  const todaySessions=cachedSessions.filter(r=>new Date(r.checkIn).toDateString()===today&&(!sf||r.siteId===sf));
+  const todayDone=cachedRecords.filter(r=>new Date(r.checkIn).toDateString()===today&&(!sf||r.siteId===sf));
+  const tr=[...todayDone, ...todaySessions]; // 통합
+  const cout=todayDone.filter(r=>r.checkOut).length, working=todaySessions.length;
   const allT=tr.reduce((a,r)=>a+Object.keys(r.tasks||{}).length,0);
   const doneT=tr.reduce((a,r)=>a+Object.values(r.tasks||{}).filter(v=>v).length,0);
   setupASel();
@@ -855,9 +898,10 @@ function renderAH() {
     const done=Object.values(r.tasks||{}).filter(v=>v).length;
     const total=Object.keys(r.tasks||{}).length;
     const pct=total?done/total*100:0, fc=pct===100?'pok':pct>0?'pwa':'png2';
-    return`<div class="ai2" onclick="openRec('${r.id}')">
+    const isActive=r._type==='active';
+    return`<div class="ai2" onclick="${isActive?'openActiveSess':'openRec'}('${r.id}')">
       <div class="ah2"><div class="an">${r.wName} <span style="font-size:11px;color:var(--muted)">${r.siteName}</span></div>
-        ${r.checkOut?'<span class="tag tok">퇴근</span>':'<span class="tag twa">근무 중</span>'}</div>
+        ${isActive?'<span class="tag twa">🟡 근무 중</span>':'<span class="tag tok">✅ 퇴근</span>'}</div>
       <div class="atimes">
         <div class="atime"><span class="atl">출근</span><span class="atv cin">${fmtT(r.checkIn)}</span></div>
         ${r.checkOut?`<div class="atime"><span class="atl">퇴근</span><span class="atv cout">${fmtT(r.checkOut)}</span></div>`:''}
@@ -918,6 +962,31 @@ async function renderRec() {
     }).join('');
   } catch(e) { el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text">데이터 로드 실패<br>'+e.message+'</div></div>'; }
 }
+async function openActiveSess(id) {
+  // 현재 근무중 세션 상세보기
+  const r=cachedSessions.find(x=>x.id===id);
+  if(!r) return;
+  const done=Object.values(r.tasks||{}).filter(v=>v).length, total=Object.keys(r.tasks||{}).length;
+  let h=`
+    <div style="background:rgba(251,146,60,.1);border:1px solid rgba(251,146,60,.3);border-radius:var(--r3);padding:9px 11px;margin-bottom:12px;font-size:12px;color:var(--warn)">
+      🟡 현재 근무 중 — 실시간 업데이트
+    </div>
+    <div class="dr"><div class="dico">👤</div><div><div class="dlb">근로자</div><div class="dvl">${r.wName}</div></div></div>
+    <div class="dr"><div class="dico">🏥</div><div><div class="dlb">사업장</div><div class="dvl">${r.siteName}</div></div></div>
+    <div class="dr"><div class="dico">🟢</div><div><div class="dlb">체크인</div><div class="dvl" style="color:var(--ok)">${fmtDT(r.checkIn)}</div></div></div>
+    ${r.checkInLat?`<div class="dr"><div class="dico">📍</div><div><div class="dlb">체크인 위치</div><div class="dvl" style="font-family:var(--mono);font-size:12px">${(+r.checkInLat).toFixed(5)}, ${(+r.checkInLng).toFixed(5)}</div></div></div>`:''}
+    <div class="dr"><div class="dico">⏱</div><div><div class="dlb">경과 시간</div><div class="dvl">${elapsed(r.checkIn)}</div></div></div>`;
+  h+=`<div class="divider"></div><div class="ct" style="margin-bottom:9px">업무 체크리스트 (${done}/${total})</div>`;
+  (r.taskLabels||[]).forEach((t,i)=>{const ok=r.tasks[i];h+=`<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><span>${ok?'✅':'⬜'}</span><span style="font-size:13px;${!ok?'color:var(--ng)':''}">${t}</span></div>`;});
+  const bP=r.photosB||[], aP=r.photosA||[];
+  if(bP.length||aP.length) {
+    h+=`<div class="divider"></div><div class="ct" style="margin-bottom:8px">현장 사진</div>`;
+    if(bP.length) h+=`<div style="font-size:11px;color:var(--B);font-family:var(--mono);margin-bottom:5px">🌅 업무 시작 전</div><div class="pgrid" style="margin-bottom:11px">${bP.map(s=>`<div class="pslot"><img src="${s}" onclick="viewPhoto(this)"></div>`).join('')}</div>`;
+    if(aP.length) h+=`<div style="font-size:11px;color:var(--B);font-family:var(--mono);margin-bottom:5px">🌆 업무 마감 후</div><div class="pgrid">${aP.map(s=>`<div class="pslot"><img src="${s}" onclick="viewPhoto(this)"></div>`).join('')}</div>`;
+  }
+  document.getElementById('rec-detail').innerHTML=h;
+  om('m-rec');
+}
 async function openRec(id) {
   let r=cachedRecords.find(x=>x.id===id);
   if(!r) {
@@ -937,8 +1006,8 @@ async function openRec(id) {
   const bP=r.photosB||[], aP=r.photosA||[];
   if(bP.length||aP.length) {
     h+=`<div class="divider"></div><div class="ct" style="margin-bottom:8px">현장 사진</div>`;
-    if(bP.length) h+=`<div style="font-size:11px;color:var(--B);font-family:var(--mono);margin-bottom:5px">🌅 업무 시작 전</div><div class="pgrid" style="margin-bottom:11px">${bP.map(s=>`<div class="pslot"><img src="${s}"></div>`).join('')}</div>`;
-    if(aP.length) h+=`<div style="font-size:11px;color:var(--B);font-family:var(--mono);margin-bottom:5px">🌆 업무 마감 후</div><div class="pgrid">${aP.map(s=>`<div class="pslot"><img src="${s}"></div>`).join('')}</div>`;
+    if(bP.length) h+=`<div style="font-size:11px;color:var(--B);font-family:var(--mono);margin-bottom:5px">🌅 업무 시작 전</div><div class="pgrid" style="margin-bottom:11px">${bP.map(s=>`<div class="pslot"><img src="${s}" onclick="viewPhoto(this)" style="cursor:zoom-in"></div>`).join('')}</div>`;
+    if(aP.length) h+=`<div style="font-size:11px;color:var(--B);font-family:var(--mono);margin-bottom:5px">🌆 업무 마감 후</div><div class="pgrid">${aP.map(s=>`<div class="pslot"><img src="${s}" onclick="viewPhoto(this)" style="cursor:zoom-in"></div>`).join('')}</div>`;
   }
   if(r.memo) h+=`<div class="divider"></div><div class="ct" style="margin-bottom:6px">특이사항</div><div style="font-size:13px;color:var(--muted);background:var(--bg);padding:9px;border-radius:var(--r3);line-height:1.6">${r.memo}</div>`;
   h+=`<div class="divider"></div><button class="btn bd bsm" onclick="delRec('${r.id}')">🗑 삭제</button>`;
@@ -1032,14 +1101,26 @@ function renderWorkers() {
   if(!cachedWorkers.length) { el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">등록된 근로자 없음</div></div>'; return; }
   el.innerHTML=cachedWorkers.map((w,i)=>{
     const s=cachedSites.find(x=>x.id===w.siteId);
-    return`<div class="wr">
+    const workerUrl=`${location.origin}${location.pathname}?w=${w.id}`;
+    return`<div class="wr" style="flex-wrap:wrap;gap:7px">
       <div class="wa2" style="background:${wc(i)}">${ini(w.name)}</div>
       <div class="wi2"><div class="wn2">${w.name}</div><div class="ws2">${s?.name||'사업장 미지정'}</div></div>
-      <div style="font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:3px">••••</div>
-      <button class="btn bo bsm" onclick="openWorker('${w.id}')">수정</button>
-      <button class="btn bd bsm" onclick="delWorker('${w.id}')">삭제</button>
+      <div style="display:flex;gap:5px;flex-shrink:0">
+        <button class="btn bo bsm" onclick="copyWorkerLink('${w.id}')" title="개인 링크 복사">🔗 링크</button>
+        <button class="btn bo bsm" onclick="openWorker('${w.id}')">수정</button>
+        <button class="btn bd bsm" onclick="delWorker('${w.id}')">삭제</button>
+      </div>
     </div>`;
   }).join('');
+}
+function copyWorkerLink(id) {
+  const url=`${location.origin}${location.pathname}?w=${id}`;
+  navigator.clipboard.writeText(url).then(()=>{
+    toast('링크 복사됨 — 카카오톡으로 전송하세요 📋','ok');
+  }).catch(()=>{
+    // 클립보드 실패 시 prompt로 보여줌
+    prompt('아래 링크를 복사하세요:', url);
+  });
 }
 async function delWorker(id) {
   if(!confirm('근로자를 삭제하시겠습니까?')) return;
@@ -1078,6 +1159,19 @@ async function exportCSV() {
 }
 
 // ══════════════════════════════════════
+// PHOTO VIEWER
+// ══════════════════════════════════════
+function viewPhoto(img) {
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.95);z-index:1000;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+  const i=document.createElement('img');
+  i.src=img.src; i.style.cssText='max-width:100%;max-height:100%;object-fit:contain;border-radius:6px';
+  ov.appendChild(i);
+  ov.onclick=()=>ov.remove();
+  document.body.appendChild(ov);
+}
+
+// ══════════════════════════════════════
 // UTILS
 // ══════════════════════════════════════
 function fmtT(iso){if(!iso)return'-';const d=new Date(iso);return`${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;}
@@ -1093,13 +1187,36 @@ function pinHelp(){alert('기본 관리자 PIN: 0000\n근로자 PIN은 관리자
 // ══════════════════════════════════════
 // PWA
 // ══════════════════════════════════════
-(function(){
-  function mkI(sz){const c=document.createElement('canvas');c.width=c.height=sz;const x=c.getContext('2d');x.fillStyle='#0A0E1A';x.fillRect(0,0,sz,sz);x.fillStyle='#F5C400';x.beginPath();x.roundRect(sz*.1,sz*.1,sz*.8,sz*.8,sz*.18);x.fill();x.font=`bold ${sz*.42}px sans-serif`;x.textAlign='center';x.textBaseline='middle';x.fillText('🧹',sz/2,sz/2);return c.toDataURL();}
-  const m={name:'브릭IFM 현장관리',short_name:'브릭IFM',start_url:'./',display:'standalone',background_color:'#0A0E1A',theme_color:'#0A0E1A',lang:'ko',icons:[{src:mkI(192),sizes:'192x192',type:'image/png'},{src:mkI(512),sizes:'512x512',type:'image/png'}]};
-  document.getElementById('pwa-manifest').href=URL.createObjectURL(new Blob([JSON.stringify(m)],{type:'application/json'}));
-  const l=document.createElement('link');l.rel='apple-touch-icon';l.href=mkI(180);document.head.appendChild(l);
-  if('serviceWorker' in navigator){const sw=`self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil(clients.claim()));self.addEventListener('fetch',e=>e.respondWith(fetch(e.request).catch(()=>caches.match(e.request))));`;navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:'text/javascript'})),{scope:'./'}).catch(()=>{});}
-})();
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('./sw.js').catch(e=>console.warn('SW 등록 실패:',e));
+}
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();deferredPrompt=e;
+  const b=document.createElement('div');b.id='inst-b';
+  b.style.cssText='position:fixed;bottom:74px;left:9px;right:9px;background:#1e2a3d;border:1px solid #253047;border-radius:11px;padding:11px 13px;display:flex;align-items:center;gap:9px;z-index:500;box-shadow:0 6px 20px rgba(0,0,0,.6)';
+  b.innerHTML='<span style="font-size:18px">📲</span><div style="flex:1;font-size:12px"><b>홈화면에 앱 설치</b><br><span style="color:#888;font-size:11px">오프라인 사용 가능</span></div><button id="inst-ok" style="background:#F5C400;color:#0A0E1A;border:none;border-radius:7px;padding:6px 13px;font-weight:700;font-size:12px;cursor:pointer">설치</button><button onclick="document.getElementById(\'inst-b\').remove()" style="background:none;border:none;color:#666;font-size:18px;cursor:pointer">✕</button>';
+  document.body.appendChild(b);
+  document.getElementById('inst-ok').onclick=async()=>{
+    if(!deferredPrompt)return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt=null;
+    b.remove();
+  };
+});
+window.addEventListener('appinstalled',()=>{
+  const b=document.getElementById('inst-b');if(b)b.remove();
+  toast('앱 설치 완료 🎉','ok');
+});
+if(/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.navigator.standalone){
+  setTimeout(()=>{
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;bottom:74px;left:9px;right:9px;background:#1e2a3d;border:1px solid #253047;border-radius:11px;padding:11px 13px;display:flex;align-items:center;gap:9px;z-index:500;';
+    t.innerHTML='<span style="font-size:17px">📲</span><div style="flex:1;font-size:11px"><b>홈화면에 추가하기</b><br><span style="color:#888">Safari 하단 공유버튼(□↑) → 홈 화면에 추가</span></div><button onclick="this.parentElement.remove()" style="background:none;border:none;color:#666;font-size:18px;cursor:pointer">✕</button>';
+    document.body.appendChild(t);
+  },2000);
+}
 </script>
 </body>
 </html>
