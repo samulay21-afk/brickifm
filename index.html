@@ -926,7 +926,12 @@ function renderAH() {
     const isActive=r._type==='active';
     return`<div class="ai2" onclick="${isActive?'openActiveSess':'openRec'}('${r.id}')">
       <div class="ah2"><div class="an">${r.wName} <span style="font-size:11px;color:var(--muted)">${r.siteName}</span></div>
-        ${isActive?'<span class="tag twa">🟡 근무 중</span>':'<span class="tag tok">✅ 퇴근</span>'}</div>
+        ${isActive ? (()=>{
+          const hrs = (Date.now()-new Date(r.checkIn).getTime())/3600000;
+          return hrs > 12
+            ? '<span class="tag tng">⚠️ 장시간 미퇴근</span>'
+            : '<span class="tag twa">🟡 근무 중</span>';
+        })() : '<span class="tag tok">✅ 퇴근</span>'}</div>
       <div class="atimes">
         <div class="atime"><span class="atl">출근</span><span class="atv cin">${fmtT(r.checkIn)}</span></div>
         ${r.checkOut?`<div class="atime"><span class="atl">퇴근</span><span class="atv cout">${fmtT(r.checkOut)}</span></div>`:''}
@@ -1009,6 +1014,13 @@ async function openActiveSess(id) {
     if(bP.length) h+=`<div style="font-size:11px;color:var(--B);font-family:var(--mono);margin-bottom:5px">🌅 업무 시작 전</div><div class="pgrid" style="margin-bottom:11px">${bP.map(s=>`<div class="pslot"><img src="${s}" onclick="viewPhoto(this)"></div>`).join('')}</div>`;
     if(aP.length) h+=`<div style="font-size:11px;color:var(--B);font-family:var(--mono);margin-bottom:5px">🌆 업무 마감 후</div><div class="pgrid">${aP.map(s=>`<div class="pslot"><img src="${s}" onclick="viewPhoto(this)"></div>`).join('')}</div>`;
   }
+  // 관리자 강제 퇴근 버튼
+  h+=`<div class="divider"></div>
+    <div style="background:rgba(244,63,94,.06);border:1px solid rgba(244,63,94,.2);border-radius:var(--r3);padding:12px;margin-bottom:8px">
+      <div style="font-size:12px;color:var(--ng);font-weight:700;margin-bottom:6px">⚠️ 미퇴근 처리</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">근로자가 퇴근 체크를 하지 않은 경우 관리자가 직접 퇴근 처리할 수 있습니다.</div>
+      <button class="btn bd bfw" onclick="adminForceCheckout('${r.id}','${r.wName}')">🏁 관리자 강제 퇴근 처리</button>
+    </div>`;
   document.getElementById('rec-detail').innerHTML=h;
   om('m-rec');
 }
@@ -1025,7 +1037,8 @@ async function openRec(id) {
     <div class="dr"><div class="dico">🟢</div><div><div class="dlb">체크인</div><div class="dvl" style="color:var(--ok)">${fmtDT(r.checkIn)}</div></div></div>
     ${r.checkInLat?`<div class="dr"><div class="dico">📍</div><div><div class="dlb">체크인 위치</div><div class="dvl" style="font-family:var(--mono);font-size:12px">${(+r.checkInLat).toFixed(5)}, ${(+r.checkInLng).toFixed(5)}</div></div></div>`:''}
     ${r.checkOut?`<div class="dr"><div class="dico">🔴</div><div><div class="dlb">체크아웃</div><div class="dvl" style="color:var(--O)">${fmtDT(r.checkOut)}</div></div></div>`:''}
-    ${r.checkOut?`<div class="dr"><div class="dico">⏱</div><div><div class="dlb">총 근무시간</div><div class="dvl">${elapsedB(r.checkIn,r.checkOut)}</div></div></div>`:''}`;
+    ${r.checkOut?`<div class="dr"><div class="dico">⏱</div><div><div class="dlb">총 근무시간</div><div class="dvl">${elapsedB(r.checkIn,r.checkOut)}</div></div></div>`:''}
+    ${r.forcedCheckout?`<div class="dr"><div class="dico">⚠️</div><div><div class="dlb">처리 방식</div><div class="dvl" style="color:var(--warn)">관리자 강제 퇴근 처리</div></div></div>`:''}`;
   h+=`<div class="divider"></div><div class="ct" style="margin-bottom:9px">업무 체크리스트 (${done}/${total})</div>`;
   (r.taskLabels||[]).forEach((t,i)=>{const ok=r.tasks[i];h+=`<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><span>${ok?'✅':'⬜'}</span><span style="font-size:13px;${!ok?'color:var(--ng)':''}">${t}</span></div>`;});
   const bP=r.photosB||[], aP=r.photosA||[];
@@ -1039,6 +1052,37 @@ async function openRec(id) {
   document.getElementById('rec-detail').innerHTML=h;
   om('m-rec');
 }
+async function adminForceCheckout(sessId, workerName) {
+  if(!confirm(`${workerName} 근로자를 강제 퇴근 처리하시겠습니까?\n\n퇴근 시간은 현재 시각으로 기록됩니다.`)) return;
+  try {
+    // 현재 세션 가져오기
+    const sessDoc = await C.sessions().doc(sessId).get();
+    if(!sessDoc.exists) { toast('세션을 찾을 수 없습니다','ng'); return; }
+    const sess = { id: sessDoc.id, ...sessDoc.data() };
+    // 강제 퇴근 시간 기록
+    const forceCheckout = new Date().toISOString();
+    const finalRecord = {
+      ...sess,
+      checkOut: forceCheckout,
+      checkOutLat: null,
+      checkOutLng: null,
+      memo: (sess.memo||'') + (sess.memo ? '\n' : '') + '[관리자 강제 퇴근 처리]',
+      forcedCheckout: true,
+      forcedBy: 'admin',
+      forcedAt: forceCheckout
+    };
+    // records에 저장 + sessions에서 삭제
+    await C.records().add(finalRecord);
+    await C.sessions().doc(sessId).delete();
+    cm('m-rec');
+    toast(`${workerName} 퇴근 처리 완료`,'ok');
+    renderAH();
+  } catch(e) {
+    toast('처리 실패: '+e.message,'ng');
+    console.error(e);
+  }
+}
+
 async function delRec(id) {
   if(!confirm('이 기록을 삭제하시겠습니까?')) return;
   try {
