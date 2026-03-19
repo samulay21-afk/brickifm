@@ -14,6 +14,7 @@
 <!-- Firebase CDN v9 compat -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <style>
 :root{
   --bg:#0A0E1A;--s1:#111827;--s2:#1a2236;--s3:#212d44;
@@ -467,6 +468,7 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const storage = firebase.storage();
 
 // ── collections ──
 const C = {
@@ -833,14 +835,28 @@ function setPtab(t) {
   document.getElementById('pg-a').style.display=t==='a'?'grid':'none';
 }
 function addPhoto(t) { pTab=t; document.getElementById('pfile').click(); }
-function onPhoto(e) {
+async function onPhoto(e) {
   const files=Array.from(e.target.files), key=pTab==='b'?'photosB':'photosA', max=3;
-  files.forEach(f=>{
-    if((sess[key]||[]).length>=max) { toast(`최대 ${max}장까지 가능합니다`,'wa'); return; }
-    const r=new FileReader();
-    r.onload=ev=>{ if(!sess[key]) sess[key]=[]; sess[key].push(ev.target.result); localStorage.setItem('sess',JSON.stringify(sess)); C.sessions().doc(sess.id).update({[key]:sess[key]}).catch(()=>{}); renderPGs(); };
-    r.readAsDataURL(f);
-  });
+  for(const f of files) {
+    if((sess[key]||[]).length>=max) { toast(`최대 ${max}장까지 가능합니다`,'wa'); break; }
+    try {
+      toast('사진 업로드 중...','');
+      // Storage에 업로드 (photos/세션ID/타입_타임스탬프.jpg)
+      const path=`photos/${sess.id}/${key}_${Date.now()}.jpg`;
+      const ref=storage.ref(path);
+      await ref.put(f);
+      const url=await ref.getDownloadURL();
+      if(!sess[key]) sess[key]=[];
+      sess[key].push(url);
+      localStorage.setItem('sess',JSON.stringify(sess));
+      await C.sessions().doc(sess.id).update({[key]:sess[key]}).catch(()=>{});
+      renderPGs();
+      toast('사진 업로드 완료 ✅','ok');
+    } catch(err) {
+      console.error(err);
+      toast('사진 업로드 실패: '+err.message,'ng');
+    }
+  }
   e.target.value='';
 }
 function renderPGs() { renderPG('b'); renderPG('a'); }
@@ -849,7 +865,16 @@ function renderPG(t) {
   el.innerHTML=photos.map((s,i)=>`<div class="pslot"><img src="${s}"><button class="pdel" onclick="rmPhoto('${t}',${i})">✕</button></div>`).join('')
     +(photos.length<max?`<div class="padd" onclick="addPhoto('${t}')"><div style="font-size:20px">📷</div><span>추가</span></div>`:'');
 }
-function rmPhoto(t,i) { const key=t==='b'?'photosB':'photosA'; sess[key].splice(i,1); localStorage.setItem('sess',JSON.stringify(sess)); C.sessions().doc(sess.id).update({[key]:sess[key]}).catch(()=>{}); renderPGs(); }
+async function rmPhoto(t,i) {
+  const key=t==='b'?'photosB':'photosA';
+  const url=sess[key][i];
+  // Storage에서 삭제 시도
+  try { await storage.refFromURL(url).delete(); } catch(e) { console.warn('storage del err',e); }
+  sess[key].splice(i,1);
+  localStorage.setItem('sess',JSON.stringify(sess));
+  await C.sessions().doc(sess.id).update({[key]:sess[key]}).catch(()=>{});
+  renderPGs();
+}
 
 // ══════════════════════════════════════
 // ADMIN HOME — 실시간 Firestore 리스너
@@ -1016,7 +1041,17 @@ async function openRec(id) {
 }
 async function delRec(id) {
   if(!confirm('이 기록을 삭제하시겠습니까?')) return;
-  try { await C.records().doc(id).delete(); } catch(e) {}
+  try {
+    // Storage 사진 삭제
+    const rec = cachedRecords.find(x=>x.id===id);
+    if(rec) {
+      const allPhotos = [...(rec.photosB||[]), ...(rec.photosA||[])];
+      for(const url of allPhotos) {
+        try { await storage.refFromURL(url).delete(); } catch(e) {}
+      }
+    }
+    await C.records().doc(id).delete();
+  } catch(e) { console.warn(e); }
   cm('m-rec'); renderRec(); renderAH(); toast('삭제됨');
 }
 
