@@ -245,7 +245,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
 <div class="screen" id="s-login">
 <div class="lw">
   <div class="brand">
-    <div class="b-logo"><div class="b-icon">🧹</div><div class="b-name">브릭<span>IFM</span></div></div>
+    <div class="b-logo"><div class="b-icon">🏢</div><div class="b-name">브릭<span>IFM</span></div></div>
     <div class="b-sub">현장 근태 · 업무 관리 시스템</div>
   </div>
   <div class="lc">
@@ -266,6 +266,20 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
       <button class="k emp"></button><button class="k" onclick="pk('0')">0</button><button class="k del" onclick="pdel()">⌫</button>
     </div>
     <div class="lhint"><a onclick="pinHelp()">PIN 도움말</a></div>
+    <!-- 설치 버튼 -->
+    <div id="install-btn-wrap" style="margin-top:14px;display:none">
+      <button onclick="triggerInstall()" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--Y);background:rgba(245,196,0,.08);color:var(--Y);font-family:var(--sans);font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        📲 홈화면에 앱 설치하기
+      </button>
+      <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:6px">설치하면 앱처럼 바로 실행할 수 있어요</div>
+    </div>
+    <!-- iOS 안내 -->
+    <div id="ios-install-wrap" style="margin-top:14px;display:none">
+      <div style="width:100%;padding:11px 13px;border-radius:10px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12px;line-height:1.7;text-align:center">
+        📲 <b>홈화면에 추가하기</b><br>
+        <span style="color:var(--muted)">하단 공유버튼(□↑) → "홈 화면에 추가"</span>
+      </div>
+    </div>
   </div>
 </div>
 </div>
@@ -273,7 +287,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
 <!-- APP -->
 <div class="screen" id="s-app">
   <div class="ah">
-    <div class="al"><div class="ai">🧹</div><div class="at" id="hdr-t">브릭IFM</div></div>
+    <div class="al"><div class="ai">🏢</div><div class="at" id="hdr-t">브릭IFM</div></div>
     <div class="ar">
       <div class="sync-dot off" id="sdot" title="Firebase 연결 상태"></div>
       <div class="rb" id="rbadge"></div>
@@ -1270,31 +1284,53 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.register('./sw.js').catch(e=>console.warn('SW 등록 실패:',e));
 }
 let deferredPrompt=null;
-window.addEventListener('beforeinstallprompt',e=>{
-  e.preventDefault();deferredPrompt=e;
-  const b=document.createElement('div');b.id='inst-b';
-  b.style.cssText='position:fixed;bottom:74px;left:9px;right:9px;background:#1e2a3d;border:1px solid #253047;border-radius:11px;padding:11px 13px;display:flex;align-items:center;gap:9px;z-index:500;box-shadow:0 6px 20px rgba(0,0,0,.6)';
-  b.innerHTML='<span style="font-size:18px">📲</span><div style="flex:1;font-size:12px"><b>홈화면에 앱 설치</b><br><span style="color:#888;font-size:11px">오프라인 사용 가능</span></div><button id="inst-ok" style="background:#F5C400;color:#0A0E1A;border:none;border-radius:7px;padding:6px 13px;font-weight:700;font-size:12px;cursor:pointer">설치</button><button onclick="document.getElementById(\'inst-b\').remove()" style="background:none;border:none;color:#666;font-size:18px;cursor:pointer">✕</button>';
-  document.body.appendChild(b);
-  document.getElementById('inst-ok').onclick=async()=>{
-    if(!deferredPrompt)return;
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
+
+// 설치 버튼 표시 함수
+function showInstallBtn(){
+  const wrap=document.getElementById('install-btn-wrap');
+  if(wrap) wrap.style.display='block';
+}
+function hideInstallBtn(){
+  const wrap=document.getElementById('install-btn-wrap');
+  if(wrap) wrap.style.display='none';
+}
+
+// 설치 트리거
+async function triggerInstall(){
+  if(!deferredPrompt){ toast('브라우저 설치 기능을 지원하지 않습니다','wa'); return; }
+  deferredPrompt.prompt();
+  const{outcome}=await deferredPrompt.userChoice;
+  if(outcome==='accepted'){
     deferredPrompt=null;
-    b.remove();
-  };
+    hideInstallBtn();
+    toast('앱 설치 완료 🎉','ok');
+  }
+}
+
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();
+  deferredPrompt=e;
+  // 로그인 화면 설치 버튼 표시
+  showInstallBtn();
 });
+
 window.addEventListener('appinstalled',()=>{
-  const b=document.getElementById('inst-b');if(b)b.remove();
+  deferredPrompt=null;
+  hideInstallBtn();
   toast('앱 설치 완료 🎉','ok');
 });
+
+// 이미 설치된 경우 버튼 숨김
+if(window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone){
+  hideInstallBtn();
+}
+
+// iOS Safari 안내
 if(/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.navigator.standalone){
   setTimeout(()=>{
-    const t=document.createElement('div');
-    t.style.cssText='position:fixed;bottom:74px;left:9px;right:9px;background:#1e2a3d;border:1px solid #253047;border-radius:11px;padding:11px 13px;display:flex;align-items:center;gap:9px;z-index:500;';
-    t.innerHTML='<span style="font-size:17px">📲</span><div style="flex:1;font-size:11px"><b>홈화면에 추가하기</b><br><span style="color:#888">Safari 하단 공유버튼(□↑) → 홈 화면에 추가</span></div><button onclick="this.parentElement.remove()" style="background:none;border:none;color:#666;font-size:18px;cursor:pointer">✕</button>';
-    document.body.appendChild(t);
-  },2000);
+    const wrap=document.getElementById('ios-install-wrap');
+    if(wrap) wrap.style.display='block';
+  },500);
 }
 </script>
 </body>
