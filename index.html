@@ -1297,13 +1297,23 @@ function hideInstallBtn(){
 
 // 설치 트리거
 async function triggerInstall(){
-  if(!deferredPrompt){ toast('브라우저 설치 기능을 지원하지 않습니다','wa'); return; }
-  deferredPrompt.prompt();
-  const{outcome}=await deferredPrompt.userChoice;
-  if(outcome==='accepted'){
-    deferredPrompt=null;
-    hideInstallBtn();
-    toast('앱 설치 완료 🎉','ok');
+  if(deferredPrompt){
+    // Chrome이 설치 프롬프트 지원하는 경우
+    deferredPrompt.prompt();
+    const{outcome}=await deferredPrompt.userChoice;
+    if(outcome==='accepted'){
+      deferredPrompt=null;
+      hideInstallBtn();
+      toast('앱 설치 완료 🎉','ok');
+    }
+  } else {
+    // 수동 안내 팝업
+    const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+    if(isIOS){
+      alert('📲 홈화면에 추가하기\n\n1. 하단 공유버튼(□↑) 탭\n2. "홈 화면에 추가" 탭\n3. "추가" 탭');
+    } else {
+      alert('📲 홈화면에 앱 설치하기\n\n1. Chrome 우측 상단 ⋮ (점 3개) 탭\n2. "앱 설치" 또는 "홈 화면에 추가" 탭\n3. "설치" 탭');
+    }
   }
 }
 
