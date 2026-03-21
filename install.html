@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>브릭IFM 앱 설치</title>
+<meta name="theme-color" content="#0A0E1A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="브릭IFM">
+<link rel="manifest" href="./manifest.json">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0A0E1A;--s1:#111827;--s2:#1a2236;--border:#253047;--Y:#F5C400;--text:#EEF2FF;--muted:#6B7FA8;--ok:#2DD4BF;--ng:#F43F5E;--sans:'Noto Sans KR',sans-serif;--r:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px;overflow-y:auto}
+.wrap{width:100%;max-width:400px;animation:fadeUp .5s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.brand{text-align:center;margin-bottom:28px}
+.logo-row{display:inline-flex;align-items:center;gap:10px;margin-bottom:6px}
+.logo-icon{width:52px;height:52px;background:var(--Y);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:27px}
+.logo-text{font-size:24px;font-weight:900;letter-spacing:-.5px}
+.logo-text span{color:var(--Y)}
+.brand-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:24px 20px;margin-bottom:14px}
+.install-btn{width:100%;padding:16px;border-radius:var(--r);border:none;cursor:pointer;font-family:var(--sans);font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;background:var(--Y);color:var(--bg);transition:all .2s;margin-bottom:12px}
+.install-btn:active{transform:scale(.97);background:#ffd000}
+.install-btn:disabled{opacity:.4;cursor:not-allowed}
+.open-btn{width:100%;padding:14px;border-radius:var(--r);border:1px solid var(--border);cursor:pointer;font-family:var(--sans);font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;background:transparent;color:var(--text);transition:all .2s}
+.open-btn:active{border-color:var(--Y);color:var(--Y)}
+.ios-steps{display:flex;flex-direction:column;gap:0}
+.step{display:flex;align-items:flex-start;gap:14px;padding:16px 0;border-bottom:1px solid var(--border)}
+.step:last-child{border-bottom:none}
+.step-num{width:30px;height:30px;border-radius:50%;background:rgba(245,196,0,.12);color:var(--Y);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;flex-shrink:0}
+.step-body{flex:1}
+.step-title{font-size:14px;font-weight:700;margin-bottom:4px;line-height:1.4}
+.step-desc{font-size:12px;color:var(--muted);line-height:1.6}
+.step-icon{display:inline-flex;align-items:center;justify-content:center;background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:14px;vertical-align:middle}
+.features{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
+.feat{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center}
+.feat-icon{font-size:22px;margin-bottom:4px}
+.feat-text{font-size:11px;color:var(--muted);line-height:1.4}
+.status{text-align:center;margin-bottom:18px}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 12px;border-radius:20px}
+.badge-ok{background:rgba(45,212,191,.12);color:var(--ok);border:1px solid rgba(45,212,191,.3)}
+.badge-wait{background:rgba(245,196,0,.1);color:var(--Y);border:1px solid rgba(245,196,0,.25)}
+.done-screen{text-align:center;padding:20px 0}
+.done-icon{font-size:56px;margin-bottom:12px;animation:pop .4s ease}
+@keyframes pop{0%{transform:scale(0)}70%{transform:scale(1.15)}100%{transform:scale(1)}}
+.done-title{font-size:18px;font-weight:900;margin-bottom:6px}
+.done-desc{font-size:13px;color:var(--muted);line-height:1.6}
+.footer{text-align:center;margin-top:16px;font-size:11px;color:var(--muted)}
+.footer a{color:var(--Y);text-decoration:none}
+.hidden{display:none!important}
+.spin-small{display:inline-block;width:18px;height:18px;border:2px solid rgba(10,14,26,.3);border-top-color:var(--bg);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(245,196,0,.4)}50%{box-shadow:0 0 0 12px rgba(245,196,0,0)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="logo-row"><div class="logo-icon">🧹</div><div class="logo-text">브릭<span>IFM</span></div></div>
+    <div class="brand-sub">현장 근태 · 업무 관리 시스템</div>
+  </div>
+
+  <div id="view-install">
+    <div class="status"><div class="badge badge-wait" id="status-badge">📲 설치 준비 중...</div></div>
+    <div class="card">
+
+      <!-- ── Android ── -->
+      <div id="sec-android" class="hidden">
+        <!-- 설치 준비 완료 -->
+        <div id="and-ready" class="hidden">
+          <button class="install-btn" id="btn-install" onclick="doInstall()"><span style="font-size:20px">📲</span> 앱 설치하기</button>
+          <div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:8px;">설치 후 앱처럼 바로 실행됩니다</div>
+        </div>
+        <!-- 인앱 브라우저 -->
+        <div id="and-inapp" class="hidden">
+          <div style="text-align:center;margin-bottom:14px;">
+            <div style="font-size:36px;margin-bottom:8px;">🌐</div>
+            <div style="font-size:14px;font-weight:700;margin-bottom:6px;">Chrome에서 열어야 설치됩니다</div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.6;">카카오톡 브라우저에서는 앱 설치가 안 됩니다.</div>
+          </div>
+          <div class="ios-steps">
+            <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">우측 상단 <span class="step-icon">⋮</span> 메뉴 누르기</div></div></div>
+            <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">「다른 브라우저로 열기」 선택</div><div class="step-desc">또는 「Chrome으로 열기」</div></div></div>
+            <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Chrome에서 「앱 설치하기」 버튼 누르기</div></div></div>
+          </div>
+          <button class="open-btn" style="margin-top:14px;" onclick="copyAndAlert()">🔗 링크 복사해서 Chrome에 붙여넣기</button>
+        </div>
+        <!-- 대기 중 -->
+        <div id="and-wait" class="hidden">
+          <button class="install-btn" disabled style="opacity:.5;"><span class="spin-small"></span> 설치 준비 중...</button>
+          <div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:8px;">잠시만 기다려주세요</div>
+          <div id="and-manual" class="hidden" style="margin-top:12px;">
+            <div style="font-size:12px;color:var(--muted);text-align:center;line-height:1.7;padding:10px;background:var(--s2);border:1px solid var(--border);border-radius:10px;">
+              자동 설치가 안 되면:<br>Chrome 우측 상단 <span class="step-icon">⋮</span> →<br><b style="color:var(--text);">「앱 설치」</b> 를 눌러주세요
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── iOS ── -->
+      <div id="sec-ios" class="hidden">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px;text-align:center;">아래 순서대로 설치하세요</div>
+        <div class="ios-steps">
+          <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">하단 공유 버튼 누르기</div><div class="step-desc">Safari 하단의 <span class="step-icon">⬆</span> 공유 버튼을 눌러주세요</div></div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">「홈 화면에 추가」 선택</div><div class="step-desc">목록을 아래로 스크롤하면<br><span class="step-icon">➕</span> 홈 화면에 추가 가 보입니다</div></div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">「추가」 누르면 완료!</div><div class="step-desc">홈화면에 앱 아이콘이 생깁니다.<br>앱처럼 바로 실행할 수 있어요.</div></div></div>
+        </div>
+      </div>
+
+      <!-- ── 데스크톱 ── -->
+      <div id="sec-desktop" class="hidden">
+        <div style="text-align:center;font-size:13px;color:var(--muted);line-height:1.7;padding:8px 0;">📱 이 링크는 <b style="color:var(--text)">스마트폰</b>에서 열어주세요.<br>카카오톡으로 아래 링크를 공유하세요.</div>
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:10px;display:flex;align-items:center;gap:8px;">
+          <span style="flex:1;font-size:12px;color:var(--Y);word-break:break-all;" id="share-url"></span>
+          <button onclick="copyUrl()" style="background:var(--Y);color:var(--bg);border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">복사</button>
+        </div>
+      </div>
+
+      <div class="features">
+        <div class="feat"><div class="feat-icon">📍</div><div class="feat-text">GPS 출퇴근<br>체크인/아웃</div></div>
+        <div class="feat"><div class="feat-icon">✅</div><div class="feat-text">사업장별<br>업무 체크리스트</div></div>
+        <div class="feat"><div class="feat-icon">📸</div><div class="feat-text">현장 사진<br>첨부</div></div>
+        <div class="feat"><div class="feat-icon">📊</div><div class="feat-text">실시간<br>모니터링</div></div>
+      </div>
+    </div>
+    <button class="open-btn" onclick="goApp()">이미 설치했어요 → 앱 실행</button>
+  </div>
+
+  <div id="view-done" class="hidden">
+    <div class="card">
+      <div class="done-screen">
+        <div class="done-icon">✅</div>
+        <div class="done-title">설치 완료!</div>
+        <div class="done-desc">홈화면에서 브릭IFM 앱을 실행하세요.<br>관리자가 전달한 PIN으로 로그인합니다.</div>
+      </div>
+      <button class="install-btn" onclick="goApp()" style="margin-bottom:0;"><span style="font-size:18px">🚀</span> 앱 실행하기</button>
+    </div>
+  </div>
+
+  <div class="footer">BRICK IFM Co., Ltd. · <a href="https://brickifm.kr">brickifm.kr</a></div>
+</div>
+
+<script>
+const APP_URL = './index.html';
+const ua = navigator.userAgent;
+const isIOS = /iphone|ipad|ipod/i.test(ua);
+const isAndroid = /android/i.test(ua);
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+const isInApp = /KAKAOTALK|NAVER|FBAN|FBAV|Instagram|Line|DaumApps|everytimeApp/i.test(ua);
+
+if (isStandalone) { location.href = APP_URL; }
+
+// ★ Service Worker 등록 — 이게 있어야 beforeinstallprompt(앱 설치 팝업)가 뜸
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW:', e));
+}
+
+const badge = document.getElementById('status-badge');
+
+if (isIOS) {
+  document.getElementById('sec-ios').classList.remove('hidden');
+  badge.innerHTML = '🍎 iPhone / iPad 설치 안내';
+} else if (isAndroid) {
+  document.getElementById('sec-android').classList.remove('hidden');
+  if (isInApp) {
+    document.getElementById('and-inapp').classList.remove('hidden');
+    badge.innerHTML = '⚠️ 브라우저에서 열어주세요';
+  } else {
+    document.getElementById('and-wait').classList.remove('hidden');
+    badge.innerHTML = '📲 설치 준비 중...';
+    setTimeout(() => {
+      if (!deferredPrompt) {
+        document.getElementById('and-manual').classList.remove('hidden');
+        badge.innerHTML = '📲 아래 안내를 따라주세요';
+      }
+    }, 5000);
+  }
+} else {
+  document.getElementById('sec-desktop').classList.remove('hidden');
+  document.getElementById('share-url').textContent = location.href;
+  badge.innerHTML = '💻 PC에서 접속 중';
+}
+
+let deferredPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('and-wait').classList.add('hidden');
+  document.getElementById('and-inapp').classList.add('hidden');
+  document.getElementById('and-ready').classList.remove('hidden');
+  badge.innerHTML = '✅ 설치 준비 완료';
+  badge.className = 'badge badge-ok';
+  document.getElementById('btn-install').style.animation = 'pulse 1.5s ease infinite';
+});
+
+function doInstall() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then((r) => {
+    if (r.outcome === 'accepted') showDone();
+    deferredPrompt = null;
+  });
+}
+
+window.addEventListener('appinstalled', () => showDone());
+
+function showDone() {
+  document.getElementById('view-install').classList.add('hidden');
+  document.getElementById('view-done').classList.remove('hidden');
+}
+function goApp() { location.href = APP_URL; }
+
+function copyAndAlert() {
+  const url = location.href;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => alert('링크가 복사되었습니다.\nChrome을 열고 주소창에 붙여넣기 해주세요.'));
+  } else {
+    const t = document.createElement('textarea');
+    t.value = url; t.style.cssText = 'position:fixed;left:-9999px';
+    document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t);
+    alert('링크가 복사되었습니다.\nChrome을 열고 주소창에 붙여넣기 해주세요.');
+  }
+}
+function copyUrl() {
+  navigator.clipboard.writeText(location.href).then(() => {
+    const b = event.target; b.textContent = '복사됨!';
+    setTimeout(() => { b.textContent = '복사'; }, 1500);
+  });
+}
+</script>
+</body>
+</html>
