@@ -962,6 +962,7 @@ function renderAH() {
           <div class="atime"><span class="atl">경과</span><span class="atv">${elapsed(s.checkIn)}</span></div>
         </div>
         <div class="prog"><div class="pb"><div class="pf ${fc}" style="width:${pct}%"></div></div><div class="pt">${done}/${total}</div></div>
+        <button class="btn bd bsm bfw" style="margin-top:7px" onclick="forceCheckout('${s.id}')">🚫 강제 체크아웃</button>
       </div>`;
     }).join('');
   }
@@ -1083,6 +1084,21 @@ async function delRec(id) {
   if(!confirm('이 기록을 삭제하시겠습니까?')) return;
   try { await C.records().doc(id).delete(); } catch(e) {}
   cm('m-rec'); renderRec(); renderAH(); toast('삭제됨');
+}
+
+async function forceCheckout(sessId) {
+  const s=cachedLiveSessions.find(x=>x.id===sessId);
+  if(!s) { toast('세션을 찾을 수 없습니다','ng'); return; }
+  if(!confirm(`${s.wName} (${s.siteName})\n\n강제 체크아웃 하시겠습니까?\n현재 시각으로 퇴근 처리됩니다.`)) return;
+  try {
+    const rec={...s, checkOut:new Date().toISOString(), memo:(s.memo||'')+' [관리자 강제 체크아웃]'};
+    delete rec.status;
+    await C.records().doc(sessId).set(rec);
+    await C.sessions().doc(sessId).delete();
+    toast(`${s.wName} 강제 체크아웃 완료`,'ok');
+  } catch(e) {
+    toast('강제 체크아웃 실패: '+e.message,'ng');
+  }
 }
 
 // ══════════════════════════════════════
