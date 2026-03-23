@@ -727,7 +727,11 @@ function grabGPS() {
 // ══════════════════════════════════════
 // WORKER HOME
 // ══════════════════════════════════════
-function initWorker() { goTab('wh'); renderWH(); retryPending(); }
+function initWorker() {
+  // 세션이 현재 로그인한 근로자 것이 아니면 무시
+  if(sess && sess.wId !== cWorker.id) { sess = null; }
+  goTab('wh'); renderWH(); retryPending();
+}
 let whTimer=null;
 function renderWH() {
   if(whTimer){clearInterval(whTimer);whTimer=null;}
