@@ -416,11 +416,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
       <button class="btn bi bsm bfw" onclick="grabGPS()">📍 현재 위치로 자동 설정</button>
     </div>
     <div class="fg">
-      <label class="fl">업무 항목 (줄바꿈으로 구분)</label>
-      <textarea class="fta" id="s-tasks" style="min-height:110px" placeholder="바닥 청소&#10;쓰레기 수거&#10;화장실 청소 및 소독&#10;소독제/소모품 보충&#10;세면대 정리"></textarea>
+      <label class="fl">직무별 업무 항목</label>
+      <div id="s-duties"></div>
+      <button class="btn bo bsm" onclick="addDutyField()" style="margin-top:7px">+ 직무 추가</button>
     </div>
     <input type="hidden" id="s-eid">
-    <button class="btn bp bfw" onclick="saveSite()">저장</button>
+    <button class="btn bp bfw" onclick="saveSite()" style="margin-top:11px">저장</button>
   </div>
 </div></div>
 
@@ -428,7 +429,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
   <div class="mh"><div class="mt2" id="w-mt">근로자 추가</div><button class="mcl" onclick="cm('m-worker')">✕</button></div>
   <div class="mb">
     <div class="fg"><label class="fl">이름 *</label><input class="fi" id="w-name" placeholder="예: 김청소"></div>
-    <div class="fg"><label class="fl">소속 사업장</label><select class="fs" id="w-site"><option value="">미지정</option></select></div>
+    <div class="fg"><label class="fl">소속 사업장</label><select class="fs" id="w-site" onchange="updateDutySelect()"><option value="">미지정</option></select></div>
+    <div class="fg"><label class="fl">담당 직무</label><select class="fs" id="w-duty"><option value="">전체 (기본)</option></select></div>
     <div class="fg"><label class="fl">개인 PIN (4자리) *</label><input class="fi" id="w-pin" type="password" placeholder="0000" maxlength="4"></div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:11px">각 근로자는 개인 PIN으로 로그인합니다</div>
     <input type="hidden" id="w-eid">
@@ -739,7 +741,7 @@ function renderWH() {
   } else {
     const s=cachedSites.find(x=>x.id===sess.siteId);
     const updBanner=()=>{
-      banner.innerHTML=`<div class="sb sb-in"><div class="sbi">✅</div><div class="sbx"><div class="sbt">${s?.name||'현장'} 근무 중</div><div class="sbs">업무 완료 후 체크아웃하세요</div><div class="sbtime">체크인 ${fmtT(sess.checkIn)} · 경과 ${elapsed(sess.checkIn)}</div></div></div>`;
+      banner.innerHTML=`<div class="sb sb-in"><div class="sbi">✅</div><div class="sbx"><div class="sbt">${s?.name||'현장'} 근무 중${sess.duty?' · '+sess.duty:''}</div><div class="sbs">업무 완료 후 체크아웃하세요</div><div class="sbtime">체크인 ${fmtT(sess.checkIn)} · 경과 ${elapsed(sess.checkIn)}</div></div></div>`;
     };
     updBanner();
     whTimer=setInterval(updBanner,30000);
@@ -759,10 +761,23 @@ async function doCheckIn() {
     document.getElementById('gps-emsg').innerHTML=`현장(${s.name})에서 ${s.rad||100}m 이내에서만 체크인 가능합니다.<br><br>현재 위치: ${lastGPS.lat.toFixed(5)}, ${lastGPS.lng.toFixed(5)}`;
     om('m-gps'); return;
   }
-  const tasks=(s.tasks||'').split('\n').filter(t=>t.trim());
+  // 직무별 체크리스트 로드
+  const duties=getSiteDuties(s);
+  let tasks=[];
+  let dutyName='';
+  if(cWorker.duty && duties.length>1) {
+    // 근로자에게 직무가 지정된 경우 → 해당 직무 체크리스트만
+    const d=duties.find(x=>x.name===cWorker.duty);
+    if(d) { tasks=(d.tasks||'').split('\n').filter(t=>t.trim()); dutyName=d.name; }
+  }
+  if(!tasks.length) {
+    // 직무 미지정 또는 매칭 안 됨 → 전체 직무 합산
+    tasks=duties.flatMap(d=>(d.tasks||'').split('\n').filter(t=>t.trim()));
+    dutyName=duties.length>1?'전체':'';
+  }
   sess={
     id:'S'+Date.now(), wId:cWorker.id, wName:cWorker.name,
-    siteId:s.id, siteName:s.name,
+    siteId:s.id, siteName:s.name, duty:dutyName,
     checkIn:new Date().toISOString(), checkInLat:lastGPS.lat, checkInLng:lastGPS.lng,
     checkOut:null, checkOutLat:null, checkOutLng:null,
     tasks:Object.fromEntries(tasks.map((_,i)=>[i,false])),
@@ -980,7 +995,7 @@ function renderAH() {
       const total=Object.keys(s.tasks||{}).length;
       const pct=total?done/total*100:0, fc=pct===100?'pok':pct>0?'pwa':'png2';
       return`<div class="ai2" style="border-color:rgba(45,212,191,.3)">
-        <div class="ah2"><div class="an">${s.wName} <span style="font-size:11px;color:var(--muted)">${s.siteName}</span></div>
+        <div class="ah2"><div class="an">${s.wName} <span style="font-size:11px;color:var(--muted)">${s.siteName}${s.duty?' · '+s.duty:''}</span></div>
           <span class="tag tok" style="animation:pulse2 2s ease infinite">● 근무 중</span></div>
         <div class="atimes">
           <div class="atime"><span class="atl">출근</span><span class="atv cin">${fmtT(s.checkIn)}</span></div>
@@ -998,7 +1013,7 @@ function renderAH() {
       const total=Object.keys(r.tasks||{}).length;
       const pct=total?done/total*100:0, fc=pct===100?'pok':pct>0?'pwa':'png2';
       return`<div class="ai2" onclick="openRec('${r.id}')">
-        <div class="ah2"><div class="an">${r.wName} <span style="font-size:11px;color:var(--muted)">${r.siteName}</span></div>
+        <div class="ah2"><div class="an">${r.wName} <span style="font-size:11px;color:var(--muted)">${r.siteName}${r.duty?' · '+r.duty:''}</span></div>
           ${r.checkOut?'<span class="tag tok">퇴근</span>':'<span class="tag twa">미퇴근</span>'}</div>
         <div class="atimes">
           <div class="atime"><span class="atl">출근</span><span class="atv cin">${fmtT(r.checkIn)}</span></div>
@@ -1065,7 +1080,7 @@ async function renderRec() {
       const pc=(r.photosB?.length||0)+(r.photosA?.length||0);
       return`<div class="ai2" onclick="openRec('${r.id}')">
         <div class="ah2"><div class="an">${r.wName}</div><div style="font-family:var(--mono);font-size:11px;color:var(--muted)">${r.checkIn?.slice(0,10)}</div></div>
-        <div style="margin-bottom:5px"><span style="font-size:11px;color:var(--muted)">${r.siteName}</span>
+        <div style="margin-bottom:5px"><span style="font-size:11px;color:var(--muted)">${r.siteName}${r.duty?' · '+r.duty:''}</span>
           ${pc?`<span class="tag tbl" style="margin-left:6px">📷 ${pc}</span>`:''}
           ${r.memo?'<span class="tag tac" style="margin-left:4px">메모</span>':''}</div>
         <div class="atimes">
@@ -1087,7 +1102,7 @@ async function openRec(id) {
   const done=Object.values(r.tasks||{}).filter(v=>v).length, total=Object.keys(r.tasks||{}).length;
   let h=`
     <div class="dr"><div class="dico">👤</div><div><div class="dlb">근로자</div><div class="dvl">${r.wName}</div></div></div>
-    <div class="dr"><div class="dico">🏥</div><div><div class="dlb">사업장</div><div class="dvl">${r.siteName}</div></div></div>
+    <div class="dr"><div class="dico">🏥</div><div><div class="dlb">사업장</div><div class="dvl">${r.siteName}${r.duty?' · '+r.duty:''}</div></div></div>
     <div class="dr"><div class="dico">🟢</div><div><div class="dlb">체크인</div><div class="dvl" style="color:var(--ok)">${fmtDT(r.checkIn)}</div></div></div>
     ${r.checkInLat?`<div class="dr"><div class="dico">📍</div><div><div class="dlb">체크인 위치</div><div class="dvl" style="font-family:var(--mono);font-size:12px">${(+r.checkInLat).toFixed(5)}, ${(+r.checkInLng).toFixed(5)}</div></div></div>`:''}
     ${r.checkOut?`<div class="dr"><div class="dico">🔴</div><div><div class="dlb">체크아웃</div><div class="dvl" style="color:var(--O)">${fmtDT(r.checkOut)}</div></div></div>`:''}
@@ -1127,8 +1142,27 @@ async function forceCheckout(sessId) {
 }
 
 // ══════════════════════════════════════
-// SITES
+// SITES (직무별 업무 항목 지원)
 // ══════════════════════════════════════
+function getSiteDuties(s) {
+  // 하위 호환: duties 배열 없으면 기존 tasks를 '기본' 직무로 변환
+  if(s.duties&&s.duties.length) return s.duties;
+  if(s.tasks) return [{name:'기본',tasks:s.tasks}];
+  return [];
+}
+function addDutyField(name='',tasks='') {
+  const wrap=document.getElementById('s-duties');
+  const idx=wrap.children.length;
+  const div=document.createElement('div');
+  div.className='duty-field';
+  div.style.cssText='background:var(--bg);border:1px solid var(--border);border-radius:var(--r3);padding:10px;margin-bottom:7px';
+  div.innerHTML=`<div style="display:flex;gap:7px;margin-bottom:7px;align-items:center">
+    <input class="fi duty-name" value="${name}" placeholder="직무명 (예: 미화, 시설, 보안)" style="flex:1">
+    <button class="btn bd bsm" onclick="this.closest('.duty-field').remove()" type="button">삭제</button>
+  </div>
+  <textarea class="fta duty-tasks" placeholder="업무 항목 (줄바꿈으로 구분)&#10;바닥 청소&#10;쓰레기 수거" style="min-height:80px">${tasks}</textarea>`;
+  wrap.appendChild(div);
+}
 function openSite(id=null) {
   const s=id?cachedSites.find(x=>x.id===id):null;
   document.getElementById('site-mt').textContent=s?'사업장 수정':'사업장 추가';
@@ -1137,19 +1171,40 @@ function openSite(id=null) {
   document.getElementById('s-rad').value=s?.rad||'100';
   document.getElementById('s-lat').value=s?.lat||'';
   document.getElementById('s-lng').value=s?.lng||'';
-  document.getElementById('s-tasks').value=s?.tasks||'';
   document.getElementById('s-eid').value=id||'';
+  // 직무 필드 초기화
+  document.getElementById('s-duties').innerHTML='';
+  const duties=s?getSiteDuties(s):[];
+  if(duties.length) duties.forEach(d=>addDutyField(d.name,d.tasks));
+  else addDutyField(); // 새 사업장이면 빈 직무 1개
   om('m-site');
 }
 async function saveSite() {
   const name=document.getElementById('s-name').value.trim();
   if(!name) { toast('사업장명 필요','ng'); return; }
+  // 직무 수집
+  const fields=document.querySelectorAll('.duty-field');
+  const duties=[];
+  fields.forEach(f=>{
+    const dname=f.querySelector('.duty-name').value.trim();
+    const dtasks=f.querySelector('.duty-tasks').value.trim();
+    if(dname||dtasks) duties.push({name:dname||'기본',tasks:dtasks});
+  });
   const eid=document.getElementById('s-eid').value;
-  const data={name,address:document.getElementById('s-addr').value.trim(),rad:document.getElementById('s-rad').value,lat:document.getElementById('s-lat').value,lng:document.getElementById('s-lng').value,tasks:document.getElementById('s-tasks').value.trim(),updatedAt:new Date().toISOString()};
+  const data={
+    name,
+    address:document.getElementById('s-addr').value.trim(),
+    rad:document.getElementById('s-rad').value,
+    lat:document.getElementById('s-lat').value,
+    lng:document.getElementById('s-lng').value,
+    duties,
+    // 하위 호환: 첫 번째 직무의 tasks를 기존 tasks 필드에도 저장
+    tasks:duties.length?duties[0].tasks:'',
+    updatedAt:new Date().toISOString()
+  };
   try {
     if(eid) await C.sites().doc(eid).update(data);
     else await C.sites().add({...data,createdAt:new Date().toISOString()});
-    // refresh cache
     const snap=await C.sites().orderBy('name').get();
     cachedSites=snap.docs.map(d=>({id:d.id,...d.data()}));
     cm('m-site'); renderSites(); setupASel(); toast(eid?'수정됨':'사업장 추가됨','ok');
@@ -1159,15 +1214,19 @@ function renderSites() {
   const el=document.getElementById('sites-list');
   if(!cachedSites.length) { el.innerHTML='<div class="empty"><div class="empty-icon">🏥</div><div class="empty-text">등록된 사업장 없음</div></div>'; return; }
   el.innerHTML=cachedSites.map(s=>{
-    const tasks=(s.tasks||'').split('\n').filter(t=>t.trim());
+    const duties=getSiteDuties(s);
+    const totalTasks=duties.reduce((a,d)=>(d.tasks||'').split('\n').filter(t=>t.trim()).length+a,0);
     const workers=cachedWorkers.filter(w=>w.siteId===s.id);
     return`<div class="site-card">
       <div class="sch"><div><div class="scn">${s.name}</div><div class="scm">${s.address||'주소 미설정'}</div></div>
         <div style="display:flex;gap:5px"><button class="btn bo bsm" onclick="openSite('${s.id}')">수정</button><button class="btn bd bsm" onclick="delSite('${s.id}')">삭제</button></div></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-bottom:${tasks.length?7:0}px">
-        <span>📍 반경 ${s.rad||100}m</span><span>👥 ${workers.length}명</span><span>✅ ${tasks.length}개 업무</span><span>${s.lat?'🛰 GPS 설정됨':'⚠️ GPS 미설정'}</span>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-bottom:7px">
+        <span>📍 반경 ${s.rad||100}m</span><span>👥 ${workers.length}명</span><span>✅ ${totalTasks}개 업무</span><span>${s.lat?'🛰 GPS 설정됨':'⚠️ GPS 미설정'}</span>
       </div>
-      ${tasks.length?`<div style="display:flex;flex-wrap:wrap;gap:4px">${tasks.map(t=>`<span class="tag tac">${t}</span>`).join('')}</div>`:''}
+      ${duties.length?duties.map(d=>{
+        const tc=(d.tasks||'').split('\n').filter(t=>t.trim());
+        return`<div style="margin-bottom:5px"><span class="tag tbl">${d.name}</span><span style="font-size:11px;color:var(--muted)">${tc.length}개 업무</span></div>`;
+      }).join(''):''}
     </div>`;
   }).join('');
 }
@@ -1186,14 +1245,29 @@ function openWorker(id=null) {
   document.getElementById('w-pin').value=w?.pin||'';
   document.getElementById('w-eid').value=id||'';
   document.getElementById('w-site').innerHTML='<option value="">미지정</option>'+cachedSites.map(s=>`<option value="${s.id}"${w?.siteId===s.id?' selected':''}>${s.name}</option>`).join('');
+  updateDutySelect(w?.duty||'');
   om('m-worker');
+}
+function updateDutySelect(selDuty) {
+  const siteId=document.getElementById('w-site').value;
+  const sel=document.getElementById('w-duty');
+  const site=cachedSites.find(s=>s.id===siteId);
+  const duties=site?getSiteDuties(site):[];
+  if(duties.length<=1) {
+    sel.innerHTML='<option value="">전체 (기본)</option>';
+    sel.closest('.fg').style.display=duties.length<=1?'none':'block';
+    return;
+  }
+  sel.closest('.fg').style.display='block';
+  const sv=typeof selDuty==='string'?selDuty:(sel.value||'');
+  sel.innerHTML='<option value="">전체</option>'+duties.map(d=>`<option value="${d.name}"${d.name===sv?' selected':''}>${d.name}</option>`).join('');
 }
 async function saveWorker() {
   const name=document.getElementById('w-name').value.trim(), pin=document.getElementById('w-pin').value.trim();
   if(!name) { toast('이름 입력 필요','ng'); return; }
   if(pin.length!==4) { toast('PIN은 4자리여야 합니다','ng'); return; }
   const eid=document.getElementById('w-eid').value;
-  const data={name,pin,siteId:document.getElementById('w-site').value,updatedAt:new Date().toISOString()};
+  const data={name,pin,siteId:document.getElementById('w-site').value,duty:document.getElementById('w-duty').value,updatedAt:new Date().toISOString()};
   try {
     if(eid) await C.workers().doc(eid).update(data);
     else await C.workers().add({...data,createdAt:new Date().toISOString()});
@@ -1207,9 +1281,10 @@ function renderWorkers() {
   if(!cachedWorkers.length) { el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">등록된 근로자 없음</div></div>'; return; }
   el.innerHTML=cachedWorkers.map((w,i)=>{
     const s=cachedSites.find(x=>x.id===w.siteId);
+    const dutyLabel=w.duty?` · ${w.duty}`:'';
     return`<div class="wr" style="flex-wrap:wrap">
       <div class="wa2" style="background:${wc(i)}">${ini(w.name)}</div>
-      <div class="wi2"><div class="wn2">${w.name}</div><div class="ws2">${s?.name||'사업장 미지정'}</div></div>
+      <div class="wi2"><div class="wn2">${w.name}</div><div class="ws2">${s?.name||'사업장 미지정'}${dutyLabel}</div></div>
       <div style="font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:3px">••••</div>
       <button class="btn bo bsm" onclick="openWorker('${w.id}')">수정</button>
       <button class="btn bd bsm" onclick="delWorker('${w.id}')">삭제</button>
@@ -1262,12 +1337,12 @@ async function exportCSV() {
     if(from) recs=recs.filter(r=>r.checkIn&&r.checkIn.slice(0,10)>=from);
     if(to) recs=recs.filter(r=>r.checkIn&&r.checkIn.slice(0,10)<=to);
     if(!recs.length) { toast('내보낼 기록 없음','wa'); return; }
-    const hd=['날짜','근로자','사업장','출근','퇴근','근무시간','업무완료','총업무','사진수','메모'];
+    const hd=['날짜','근로자','사업장','직무','출근','퇴근','근무시간','업무완료','총업무','사진수','메모'];
     const esc=v=>`"${String(v||'').replace(/"/g,'""')}"`;
     const rows=recs.map(r=>{
       const done=Object.values(r.tasks||{}).filter(v=>v).length, total=Object.keys(r.tasks||{}).length;
       const pc=(r.photosB?.length||0)+(r.photosA?.length||0);
-      return[r.checkIn?.slice(0,10),r.wName,r.siteName,fmtT(r.checkIn),r.checkOut?fmtT(r.checkOut):'미퇴근',r.checkOut?elapsedB(r.checkIn,r.checkOut):'-',done,total,pc,esc(r.memo)];
+      return[r.checkIn?.slice(0,10),r.wName,r.siteName,r.duty||'',fmtT(r.checkIn),r.checkOut?fmtT(r.checkOut):'미퇴근',r.checkOut?elapsedB(r.checkIn,r.checkOut):'-',done,total,pc,esc(r.memo)];
     });
     const csv='\uFEFF'+[hd,...rows].map(r=>r.join(',')).join('\n');
     const label=from&&to?`${from}~${to}`:new Date().toISOString().slice(0,10);
