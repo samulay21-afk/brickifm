@@ -1,4 +1,4 @@
-const CACHE_NAME = 'brickifm-v5';
+const CACHE_NAME = 'brickifm-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -28,6 +28,8 @@ self.addEventListener('activate', (e) => {
 
 // fetch 핸들러 (Chrome PWA 설치 필수 조건)
 self.addEventListener('fetch', (e) => {
+  // http/https만 처리 (chrome-extension 등 제외)
+  if (!e.request.url.startsWith('http')) return;
   // Firebase 등 API 요청은 캐시하지 않고 네트워크로
   if (e.request.url.includes('firestore') || 
       e.request.url.includes('googleapis') || 
