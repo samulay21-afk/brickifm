@@ -353,7 +353,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
     <div class="tp" id="tp-aw">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:11px">
         <div style="font-size:15px;font-weight:700">근로자 관리</div>
-        <button class="btn bp bsm" onclick="openWorker()">+ 추가</button>
+        <button class="btn bp bsm" id="btn-add-worker" onclick="openWorker()">+ 추가</button>
       </div>
       <div id="workers-list"></div>
     </div>
@@ -419,6 +419,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
       <label class="fl">직무별 업무 항목</label>
       <div id="s-duties"></div>
       <button class="btn bo bsm" onclick="addDutyField()" style="margin-top:7px">+ 직무 추가</button>
+    </div>
+    <div class="fg">
+      <label class="fl">사업장 관리자 PIN (4자리, 선택)</label>
+      <input class="fi" id="s-apin" type="password" placeholder="미설정 시 사업장 관리자 없음" maxlength="4">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">이 PIN으로 로그인하면 해당 사업장만 볼 수 있습니다</div>
     </div>
     <input type="hidden" id="s-eid">
     <button class="btn bp bfw" onclick="saveSite()" style="margin-top:11px">저장</button>
@@ -510,6 +515,7 @@ const ini=n=>n?n.slice(0,1):'?';
 let role=null, cWorker=null, loginRole='admin', selW=null, pinBuf='';
 let sess=null, pTab='b', lastGPS=null;
 let adminPin='0000';
+let adminSiteId=null; // null=슈퍼관리자, siteId=사업장 관리자
 let cachedSites=[], cachedWorkers=[], cachedRecords=[];
 let liveUnsub=null; // firestore live listener
 
@@ -623,8 +629,12 @@ function updPD(d) {
 }
 function tryLogin() {
   if(loginRole==='admin') {
-    if(pinBuf===adminPin) { role='admin'; enterApp(); }
-    else loginErr();
+    // 1) 슈퍼 관리자 PIN 확인
+    if(pinBuf===adminPin) { role='admin'; adminSiteId=null; enterApp(); return; }
+    // 2) 사업장 관리자 PIN 확인
+    const siteMatch=cachedSites.find(s=>s.adminPin&&s.adminPin===pinBuf);
+    if(siteMatch) { role='admin'; adminSiteId=siteMatch.id; enterApp(); return; }
+    loginErr();
   } else {
     if(!selW) { toast('근로자를 먼저 선택하세요','wa'); pinBuf=''; updPD([]); return; }
     if(pinBuf===selW.pin) { role='worker'; cWorker=selW; enterApp(); }
@@ -646,7 +656,7 @@ function logout() {
   if(liveUnsub) { liveUnsub(); liveUnsub=null; }
   if(liveSessionsUnsub) { liveSessionsUnsub(); liveSessionsUnsub=null; }
   if(whTimer) { clearInterval(whTimer); whTimer=null; }
-  role=null; cWorker=null; pinBuf=''; updPD([]); selW=null; loginRole='admin';
+  role=null; cWorker=null; pinBuf=''; updPD([]); selW=null; loginRole='admin'; adminSiteId=null;
   // 개인 링크 상태면 역할 탭 복원
   if(directWorkerId) { document.querySelector('.rtabs').style.display=''; directWorkerId=null; }
   document.getElementById('rt-admin').classList.add('on');
@@ -658,10 +668,23 @@ function logout() {
 function applyRole() {
   const rb=document.getElementById('rbadge');
   if(role==='admin') {
-    rb.textContent='👔 관리자'; rb.className='rb rba';
-    document.getElementById('hdr-t').textContent='브릭IFM 관리자';
-    ['ah','ar','as','aw','aset'].forEach(n=>document.getElementById('bn-'+n).classList.remove('hid'));
-    document.getElementById('bn-wh').classList.add('hid');
+    if(adminSiteId) {
+      // 사업장 관리자
+      const site=cachedSites.find(s=>s.id===adminSiteId);
+      rb.textContent=`👔 ${site?.name||'사업장'} 관리자`; rb.className='rb rba';
+      document.getElementById('hdr-t').textContent=site?.name||'사업장 관리자';
+      ['ah','ar','aw'].forEach(n=>document.getElementById('bn-'+n).classList.remove('hid'));
+      ['as','aset'].forEach(n=>document.getElementById('bn-'+n).classList.add('hid'));
+      document.getElementById('btn-add-worker').style.display='none';
+      document.getElementById('bn-wh').classList.add('hid');
+    } else {
+      // 슈퍼 관리자
+      rb.textContent='👔 관리자'; rb.className='rb rba';
+      document.getElementById('hdr-t').textContent='브릭IFM 관리자';
+      ['ah','ar','as','aw','aset'].forEach(n=>document.getElementById('bn-'+n).classList.remove('hid'));
+      document.getElementById('btn-add-worker').style.display='';
+      document.getElementById('bn-wh').classList.add('hid');
+    }
   } else {
     rb.textContent=`🦺 ${cWorker.name}`; rb.className='rb rbw';
     const s=cachedSites.find(x=>x.id===cWorker.siteId);
@@ -972,7 +995,14 @@ function startLiveAH() {
 
 function setupASel() {
   const sel=document.getElementById('asite-sel'), cur=sel.value;
-  sel.innerHTML='<option value="">전체 사업장</option>'+cachedSites.map(s=>`<option value="${s.id}"${s.id===cur?' selected':''}>${s.name}</option>`).join('');
+  if(adminSiteId) {
+    const site=cachedSites.find(s=>s.id===adminSiteId);
+    sel.innerHTML=`<option value="${adminSiteId}" selected>${site?.name||'사업장'}</option>`;
+    sel.disabled=true;
+  } else {
+    sel.innerHTML='<option value="">전체 사업장</option>'+cachedSites.map(s=>`<option value="${s.id}"${s.id===cur?' selected':''}>${s.name}</option>`).join('');
+    sel.disabled=false;
+  }
 }
 
 function renderAH() {
@@ -1044,7 +1074,14 @@ function renderAH() {
 // ══════════════════════════════════════
 function setupRF() {
   const sf=document.getElementById('rf-site'), cur=sf.value;
-  sf.innerHTML='<option value="">전체 사업장</option>'+cachedSites.map(s=>`<option value="${s.id}"${s.id===cur?' selected':''}>${s.name}</option>`).join('');
+  if(adminSiteId) {
+    const site=cachedSites.find(s=>s.id===adminSiteId);
+    sf.innerHTML=`<option value="${adminSiteId}" selected>${site?.name||'사업장'}</option>`;
+    sf.disabled=true;
+  } else {
+    sf.innerHTML='<option value="">전체 사업장</option>'+cachedSites.map(s=>`<option value="${s.id}"${s.id===cur?' selected':''}>${s.name}</option>`).join('');
+    sf.disabled=false;
+  }
   if(!document.getElementById('rf-from').value) {
     document.getElementById('rf-from').value=new Date().toISOString().slice(0,10);
     document.getElementById('rf-to').value=new Date().toISOString().slice(0,10);
@@ -1175,6 +1212,7 @@ function openSite(id=null) {
   document.getElementById('s-rad').value=s?.rad||'100';
   document.getElementById('s-lat').value=s?.lat||'';
   document.getElementById('s-lng').value=s?.lng||'';
+  document.getElementById('s-apin').value=s?.adminPin||'';
   document.getElementById('s-eid').value=id||'';
   // 직무 필드 초기화
   document.getElementById('s-duties').innerHTML='';
@@ -1186,6 +1224,15 @@ function openSite(id=null) {
 async function saveSite() {
   const name=document.getElementById('s-name').value.trim();
   if(!name) { toast('사업장명 필요','ng'); return; }
+  const siteAdminPin=document.getElementById('s-apin').value.trim();
+  if(siteAdminPin && siteAdminPin.length!==4) { toast('사업장 관리자 PIN은 4자리여야 합니다','ng'); return; }
+  const eid=document.getElementById('s-eid').value;
+  // PIN 중복 체크
+  if(siteAdminPin) {
+    if(siteAdminPin===adminPin) { toast('슈퍼 관리자 PIN과 동일합니다','ng'); return; }
+    const dup=cachedSites.find(s=>s.adminPin===siteAdminPin&&s.id!==eid);
+    if(dup) { toast(`${dup.name} 사업장과 PIN이 중복됩니다`,'ng'); return; }
+  }
   // 직무 수집
   const fields=document.querySelectorAll('.duty-field');
   const duties=[];
@@ -1194,15 +1241,14 @@ async function saveSite() {
     const dtasks=f.querySelector('.duty-tasks').value.trim();
     if(dname||dtasks) duties.push({name:dname||'기본',tasks:dtasks});
   });
-  const eid=document.getElementById('s-eid').value;
   const data={
     name,
     address:document.getElementById('s-addr').value.trim(),
     rad:document.getElementById('s-rad').value,
     lat:document.getElementById('s-lat').value,
     lng:document.getElementById('s-lng').value,
+    adminPin:siteAdminPin||'',
     duties,
-    // 하위 호환: 첫 번째 직무의 tasks를 기존 tasks 필드에도 저장
     tasks:duties.length?duties[0].tasks:'',
     updatedAt:new Date().toISOString()
   };
@@ -1225,7 +1271,7 @@ function renderSites() {
       <div class="sch"><div><div class="scn">${s.name}</div><div class="scm">${s.address||'주소 미설정'}</div></div>
         <div style="display:flex;gap:5px"><button class="btn bo bsm" onclick="openSite('${s.id}')">수정</button><button class="btn bd bsm" onclick="delSite('${s.id}')">삭제</button></div></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-bottom:7px">
-        <span>📍 반경 ${s.rad||100}m</span><span>👥 ${workers.length}명</span><span>✅ ${totalTasks}개 업무</span><span>${s.lat?'🛰 GPS 설정됨':'⚠️ GPS 미설정'}</span>
+        <span>📍 반경 ${s.rad||100}m</span><span>👥 ${workers.length}명</span><span>✅ ${totalTasks}개 업무</span><span>${s.lat?'🛰 GPS 설정됨':'⚠️ GPS 미설정'}</span>${s.adminPin?'<span>🔑 관리자 PIN 설정됨</span>':''}
       </div>
       ${duties.length?duties.map(d=>{
         const tc=(d.tasks||'').split('\n').filter(t=>t.trim());
@@ -1282,16 +1328,16 @@ async function saveWorker() {
 }
 function renderWorkers() {
   const el=document.getElementById('workers-list');
-  if(!cachedWorkers.length) { el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">등록된 근로자 없음</div></div>'; return; }
-  el.innerHTML=cachedWorkers.map((w,i)=>{
+  const list=adminSiteId?cachedWorkers.filter(w=>w.siteId===adminSiteId):cachedWorkers;
+  if(!list.length) { el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">등록된 근로자 없음</div></div>'; return; }
+  el.innerHTML=list.map((w,i)=>{
     const s=cachedSites.find(x=>x.id===w.siteId);
     const dutyLabel=w.duty?` · ${w.duty}`:'';
     return`<div class="wr" style="flex-wrap:wrap">
       <div class="wa2" style="background:${wc(i)}">${ini(w.name)}</div>
       <div class="wi2"><div class="wn2">${w.name}</div><div class="ws2">${s?.name||'사업장 미지정'}${dutyLabel}</div></div>
       <div style="font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:3px">••••</div>
-      <button class="btn bo bsm" onclick="openWorker('${w.id}')">수정</button>
-      <button class="btn bd bsm" onclick="delWorker('${w.id}')">삭제</button>
+      ${!adminSiteId?`<button class="btn bo bsm" onclick="openWorker('${w.id}')">수정</button><button class="btn bd bsm" onclick="delWorker('${w.id}')">삭제</button>`:''}
       <button class="btn bi bsm" style="width:100%;margin-top:5px" onclick="shareWorkerLink('${w.id}','${w.name}','${w.pin}')">📩 링크 보내기</button>
     </div>`;
   }).join('');

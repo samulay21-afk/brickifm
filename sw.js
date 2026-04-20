@@ -1,4 +1,4 @@
-const CACHE_NAME = 'brickifm-v4';
+const CACHE_NAME = 'brickifm-v5';
 const ASSETS = [
   './',
   './index.html',
