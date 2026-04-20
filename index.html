@@ -673,8 +673,8 @@ function applyRole() {
       const site=cachedSites.find(s=>s.id===adminSiteId);
       rb.textContent=`👔 ${site?.name||'사업장'} 관리자`; rb.className='rb rba';
       document.getElementById('hdr-t').textContent=site?.name||'사업장 관리자';
-      ['ah','ar','aw'].forEach(n=>document.getElementById('bn-'+n).classList.remove('hid'));
-      ['as','aset'].forEach(n=>document.getElementById('bn-'+n).classList.add('hid'));
+      ['ah','ar'].forEach(n=>document.getElementById('bn-'+n).classList.remove('hid'));
+      ['as','aw','aset'].forEach(n=>document.getElementById('bn-'+n).classList.add('hid'));
       document.getElementById('btn-add-worker').style.display='none';
       document.getElementById('bn-wh').classList.add('hid');
     } else {
