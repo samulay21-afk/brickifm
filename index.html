@@ -292,12 +292,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
       <div class="gbar"><div class="gdot goff" id="gdot"></div><span id="gtxt" style="color:var(--muted)">위치 확인 중...</span></div>
       <div id="tsec" style="display:none">
         <div class="card">
-          <div class="ct">오늘의 업무</div>
+          <div class="ct">오늘의 업무 <span id="today-date" style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px"></span></div>
           <div id="tlist"></div>
-          <div style="margin-top:9px;display:flex;align-items:center;justify-content:space-between">
-            <div style="font-size:12px;color:var(--muted)">완료 <span id="tdone" style="color:var(--ok);font-weight:700">0</span> / <span id="ttotal">0</span></div>
-            <div id="ttag" class="tag"></div>
-          </div>
         </div>
         <div class="card">
           <div class="ct">현장 사진</div>
@@ -725,7 +721,7 @@ function updGBar() {
   const dot=document.getElementById('gdot'), txt=document.getElementById('gtxt');
   if(!dot||!txt) return;
   if(lastGPS) { dot.className='gdot gon'; txt.style.color='var(--ok)'; txt.textContent=`위치 확인됨 (정확도 ±${Math.round(lastGPS.acc)}m)`; }
-  else { dot.className='gdot gerr'; txt.style.color='var(--ng)'; txt.textContent='GPS 신호 없음 — 실외로 이동해주세요'; }
+  else { dot.className='gdot gerr'; txt.style.color='var(--warn)'; txt.textContent='GPS 미확인 — 위치 없이 체크인됩니다'; }
 }
 function hav(la1,lo1,la2,lo2) {
   const R=6371000,f1=la1*Math.PI/180,f2=la2*Math.PI/180,df=(la2-la1)*Math.PI/180,dl=(lo2-lo1)*Math.PI/180;
@@ -768,7 +764,9 @@ function renderWH() {
   } else {
     const s=cachedSites.find(x=>x.id===sess.siteId);
     const updBanner=()=>{
-      banner.innerHTML=`<div class="sb sb-in"><div class="sbi">✅</div><div class="sbx"><div class="sbt">${s?.name||'현장'} 근무 중${sess.duty?' · '+sess.duty:''}</div><div class="sbs">업무 완료 후 체크아웃하세요</div><div class="sbtime">체크인 ${fmtT(sess.checkIn)} · 경과 ${elapsed(sess.checkIn)}</div></div></div>`;
+      const now=new Date();
+      const dateStr=`${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')} ${['일','월','화','수','목','금','토'][now.getDay()]}요일`;
+      banner.innerHTML=`<div class="sb sb-in"><div class="sbi">✅</div><div class="sbx"><div class="sbt">${s?.name||'현장'} 근무 중${sess.duty?' · '+sess.duty:''}</div><div class="sbs">${dateStr}</div><div class="sbtime">체크인 ${fmtT(sess.checkIn)} · 경과 ${elapsed(sess.checkIn)}</div></div></div>`;
     };
     updBanner();
     whTimer=setInterval(updBanner,30000);
@@ -783,39 +781,45 @@ function gpsAct() { if(!sess||!sess.checkIn) doCheckIn(); else openCO(); }
 async function doCheckIn() {
   const s=cachedSites.find(x=>x.id===cWorker.siteId);
   if(!s) { toast('소속 사업장 없음. 관리자에게 문의하세요','ng'); return; }
-  if(!lastGPS) { toast('GPS 신호 대기 중... 잠시 후 재시도하세요','wa'); return; }
-  if(!inRange(s)) {
-    document.getElementById('gps-emsg').innerHTML=`현장(${s.name})에서 ${s.rad||100}m 이내에서만 체크인 가능합니다.<br><br>현재 위치: ${lastGPS.lat.toFixed(5)}, ${lastGPS.lng.toFixed(5)}`;
-    om('m-gps'); return;
+  // GPS 위치 기록 (없으면 null로 기록, 체크인은 허용)
+  const hasGPS=!!lastGPS;
+  const lat=hasGPS?lastGPS.lat:null;
+  const lng=hasGPS?lastGPS.lng:null;
+  // 범위 밖 체크인 판별
+  let outOfRange=false;
+  if(hasGPS && s.lat && s.lng) {
+    const dist=hav(lat,lng,+s.lat,+s.lng);
+    if(dist > 500) outOfRange=true;
   }
   // 직무별 체크리스트 로드
   const duties=getSiteDuties(s);
   let tasks=[];
   let dutyName='';
   if(cWorker.duty && duties.length>1) {
-    // 근로자에게 직무가 지정된 경우 → 해당 직무 체크리스트만
     const d=duties.find(x=>x.name===cWorker.duty);
     if(d) { tasks=(d.tasks||'').split('\n').filter(t=>t.trim()); dutyName=d.name; }
   }
   if(!tasks.length) {
-    // 직무 미지정 또는 매칭 안 됨 → 전체 직무 합산
     tasks=duties.flatMap(d=>(d.tasks||'').split('\n').filter(t=>t.trim()));
     dutyName=duties.length>1?'전체':'';
   }
   sess={
     id:'S'+Date.now(), wId:cWorker.id, wName:cWorker.name,
     siteId:s.id, siteName:s.name, duty:dutyName,
-    checkIn:new Date().toISOString(), checkInLat:lastGPS.lat, checkInLng:lastGPS.lng,
+    checkIn:new Date().toISOString(), checkInLat:lat, checkInLng:lng,
     checkOut:null, checkOutLat:null, checkOutLng:null,
+    gpsStatus: hasGPS ? (outOfRange ? 'out' : 'ok') : 'none',
     tasks:Object.fromEntries(tasks.map((_,i)=>[i,false])),
     taskLabels:tasks, photosB:[], photosA:[], memo:''
   };
   localStorage.setItem('sess', JSON.stringify(sess));
-  // Firestore에 활성 세션 기록 (관리자가 실시간 확인 가능)
   try {
     await C.sessions().doc(sess.id).set({ ...sess, status:'active' });
   } catch(e) { console.warn('session sync err', e); }
-  toast(`${s.name} 체크인 완료 ✅`,'ok');
+  // 상태별 토스트 메시지
+  if(!hasGPS) toast(`${s.name} 체크인 완료 (GPS 미확인)`,'wa');
+  else if(outOfRange) toast(`${s.name} 체크인 완료 ⚠️ 현장 밖 위치`,'wa');
+  else toast(`${s.name} 체크인 완료 ✅`,'ok');
   renderWH();
 }
 
@@ -827,16 +831,19 @@ function openCO() {
 }
 
 async function doCheckout() {
-  if(!lastGPS) { toast('GPS 신호 없음','wa'); cm('m-co'); return; }
-  const s=cachedSites.find(x=>x.id===sess.siteId);
-  if(s&&!inRange(s)) {
-    cm('m-co');
-    document.getElementById('gps-emsg').innerHTML=`현장(${s.name})에서 ${s.rad||100}m 이내에서만 체크아웃 가능합니다.`;
-    om('m-gps'); return;
-  }
   sess.checkOut=new Date().toISOString();
-  sess.checkOutLat=lastGPS.lat; sess.checkOutLng=lastGPS.lng;
+  sess.checkOutLat=lastGPS?lastGPS.lat:null;
+  sess.checkOutLng=lastGPS?lastGPS.lng:null;
   sess.memo=document.getElementById('wmemo')?.value||'';
+  // 체크아웃 위치 범위 확인
+  if(lastGPS) {
+    const s=cachedSites.find(x=>x.id===sess.siteId);
+    if(s && s.lat && s.lng && hav(lastGPS.lat,lastGPS.lng,+s.lat,+s.lng) > 500) {
+      sess.gpsStatus = (sess.gpsStatus==='out'||sess.gpsStatus==='none') ? sess.gpsStatus : 'out';
+    }
+  } else {
+    sess.gpsStatus = sess.gpsStatus || 'none';
+  }
   try {
     await C.records().doc(sess.id).set({ ...sess });
     await C.sessions().doc(sess.id).delete();
@@ -844,7 +851,6 @@ async function doCheckout() {
   } catch(e) {
     setSyncDot('err');
     console.warn('checkout sync err', e);
-    // 오프라인 큐에 저장 (나중에 자동 재시도)
     const pending=JSON.parse(localStorage.getItem('pendingCheckouts')||'[]');
     pending.push({...sess});
     localStorage.setItem('pendingCheckouts',JSON.stringify(pending));
@@ -874,35 +880,17 @@ function renderTasks() {
   if(!sess) return;
   const el=document.getElementById('tlist');
   const tasks=sess.taskLabels||[];
+  // 날짜 표시
+  const d=new Date();
+  const dateStr=`${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} ${['일','월','화','수','목','금','토'][d.getDay()]}요일`;
+  const dateEl=document.getElementById('today-date');
+  if(dateEl) dateEl.textContent=dateStr;
   if(!tasks.length) { el.innerHTML='<div style="color:var(--muted);font-size:12px;text-align:center;padding:8px">등록된 업무 항목 없음</div>'; return; }
-  el.innerHTML=tasks.map((t,i)=>{
-    const d=sess.tasks[i];
-    return`<div class="ti ${d?'done':''}" id="ti-${i}"><div class="tc ${d?'done':''}" id="tc-${i}" onclick="togTask(${i})">${d?'✓':''}</div><div class="tl ${d?'done':''}">${t}</div></div>`;
-  }).join('');
-  updTP();
+  el.innerHTML=tasks.map(t=>
+    `<div style="padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r3);margin-bottom:5px;font-size:13px;color:var(--text)">• ${t}</div>`
+  ).join('');
 }
-function togTask(i) {
-  if(!sess) return;
-  sess.tasks[i]=!sess.tasks[i];
-  localStorage.setItem('sess', JSON.stringify(sess));
-  // 실시간 Firestore 업데이트 (비동기)
-  C.sessions().doc(sess.id).update({ [`tasks.${i}`]: sess.tasks[i] }).catch(()=>{});
-  const d=sess.tasks[i];
-  document.getElementById('tc-'+i).className='tc'+(d?' done':'');
-  document.getElementById('tc-'+i).innerHTML=d?'✓':'';
-  document.getElementById('ti-'+i).className='ti'+(d?' done':'');
-  document.getElementById('ti-'+i).querySelector('.tl').className='tl'+(d?' done':'');
-  updTP();
-}
-function updTP() {
-  const total=Object.keys(sess.tasks).length, done=Object.values(sess.tasks).filter(v=>v).length;
-  document.getElementById('tdone').textContent=done;
-  document.getElementById('ttotal').textContent=total;
-  const tag=document.getElementById('ttag');
-  if(done===total&&total>0) { tag.className='tag tok'; tag.textContent='완료 ✓'; }
-  else if(done>0) { tag.className='tag twa'; tag.textContent=`${Math.round(done/total*100)}%`; }
-  else { tag.className='tag'; tag.textContent='시작 전'; }
-}
+// togTask, updTP 제거 — 업무 항목은 텍스트 확인용
 function setPtab(t) {
   pTab=t;
   document.getElementById('ptb-b').classList.toggle('on',t==='b');
@@ -1030,7 +1018,8 @@ function renderAH() {
       const pct=total?done/total*100:0, fc=pct===100?'pok':pct>0?'pwa':'png2';
       return`<div class="ai2" style="border-color:rgba(45,212,191,.3)">
         <div class="ah2"><div class="an">${s.wName} <span style="font-size:11px;color:var(--muted)">${s.siteName}${s.duty?' · '+s.duty:''}</span></div>
-          <span class="tag tok" style="animation:pulse2 2s ease infinite">● 근무 중</span></div>
+          <span class="tag tok" style="animation:pulse2 2s ease infinite">● 근무 중</span>
+          ${s.gpsStatus==='out'?'<span class="tag tng2">📍 현장 밖</span>':s.gpsStatus==='none'?'<span class="tag twa2">📍 GPS 미확인</span>':''}</div>
         <div class="atimes">
           <div class="atime"><span class="atl">출근</span><span class="atv cin">${fmtT(s.checkIn)}</span></div>
           <div class="atime"><span class="atl">경과</span><span class="atv">${elapsed(s.checkIn)}</span></div>
@@ -1048,7 +1037,8 @@ function renderAH() {
       const pct=total?done/total*100:0, fc=pct===100?'pok':pct>0?'pwa':'png2';
       return`<div class="ai2" onclick="openRec('${r.id}')">
         <div class="ah2"><div class="an">${r.wName} <span style="font-size:11px;color:var(--muted)">${r.siteName}${r.duty?' · '+r.duty:''}</span></div>
-          ${r.checkOut?'<span class="tag tok">퇴근</span>':'<span class="tag twa">미퇴근</span>'}</div>
+          ${r.checkOut?'<span class="tag tok">퇴근</span>':'<span class="tag twa">미퇴근</span>'}
+          ${r.gpsStatus==='out'?'<span class="tag tng2">📍 현장 밖</span>':r.gpsStatus==='none'?'<span class="tag twa2">📍 GPS 미확인</span>':''}</div>
         <div class="atimes">
           <div class="atime"><span class="atl">출근</span><span class="atv cin">${fmtT(r.checkIn)}</span></div>
           ${r.checkOut?`<div class="atime"><span class="atl">퇴근</span><span class="atv cout">${fmtT(r.checkOut)}</span></div>`:''}
@@ -1145,7 +1135,7 @@ async function openRec(id) {
     <div class="dr"><div class="dico">👤</div><div><div class="dlb">근로자</div><div class="dvl">${r.wName}</div></div></div>
     <div class="dr"><div class="dico">🏥</div><div><div class="dlb">사업장</div><div class="dvl">${r.siteName}${r.duty?' · '+r.duty:''}</div></div></div>
     <div class="dr"><div class="dico">🟢</div><div><div class="dlb">체크인</div><div class="dvl" style="color:var(--ok)">${fmtDT(r.checkIn)}</div></div></div>
-    ${r.checkInLat?`<div class="dr"><div class="dico">📍</div><div><div class="dlb">체크인 위치</div><div class="dvl" style="font-family:var(--mono);font-size:12px">${(+r.checkInLat).toFixed(5)}, ${(+r.checkInLng).toFixed(5)}</div></div></div>`:''}
+    ${r.checkInLat?`<div class="dr"><div class="dico">📍</div><div><div class="dlb">체크인 위치${r.gpsStatus==='out'?' <span style="color:var(--ng)">⚠️ 현장 밖</span>':r.gpsStatus==='none'?' <span style="color:var(--warn)">GPS 미확인</span>':' <span style="color:var(--ok)">✓ 현장 내</span>'}</div><div class="dvl" style="font-family:var(--mono);font-size:12px">${(+r.checkInLat).toFixed(5)}, ${(+r.checkInLng).toFixed(5)}</div></div></div>`:`<div class="dr"><div class="dico">📍</div><div><div class="dlb">체크인 위치</div><div class="dvl" style="color:var(--warn)">GPS 미확인</div></div></div>`}
     ${r.checkOut?`<div class="dr"><div class="dico">🔴</div><div><div class="dlb">체크아웃</div><div class="dvl" style="color:var(--O)">${fmtDT(r.checkOut)}</div></div></div>`:''}
     ${r.checkOut?`<div class="dr"><div class="dico">⏱</div><div><div class="dlb">총 근무시간</div><div class="dvl">${elapsedB(r.checkIn,r.checkOut)}</div></div></div>`:''}`;
   h+=`<div class="divider"></div><div class="ct" style="margin-bottom:9px">업무 체크리스트 (${done}/${total})</div>`;
@@ -1387,12 +1377,13 @@ async function exportCSV() {
     if(from) recs=recs.filter(r=>r.checkIn&&r.checkIn.slice(0,10)>=from);
     if(to) recs=recs.filter(r=>r.checkIn&&r.checkIn.slice(0,10)<=to);
     if(!recs.length) { toast('내보낼 기록 없음','wa'); return; }
-    const hd=['날짜','근로자','사업장','직무','출근','퇴근','근무시간','업무완료','총업무','사진수','메모'];
+    const hd=['날짜','근로자','사업장','직무','출근','퇴근','근무시간','GPS상태','업무완료','총업무','사진수','메모'];
     const esc=v=>`"${String(v||'').replace(/"/g,'""')}"`;
     const rows=recs.map(r=>{
       const done=Object.values(r.tasks||{}).filter(v=>v).length, total=Object.keys(r.tasks||{}).length;
       const pc=(r.photosB?.length||0)+(r.photosA?.length||0);
-      return[r.checkIn?.slice(0,10),r.wName,r.siteName,r.duty||'',fmtT(r.checkIn),r.checkOut?fmtT(r.checkOut):'미퇴근',r.checkOut?elapsedB(r.checkIn,r.checkOut):'-',done,total,pc,esc(r.memo)];
+      const gps=r.gpsStatus==='out'?'현장 밖':r.gpsStatus==='none'?'GPS 미확인':'정상';
+      return[r.checkIn?.slice(0,10),r.wName,r.siteName,r.duty||'',fmtT(r.checkIn),r.checkOut?fmtT(r.checkOut):'미퇴근',r.checkOut?elapsedB(r.checkIn,r.checkOut):'-',gps,done,total,pc,esc(r.memo)];
     });
     const csv='\uFEFF'+[hd,...rows].map(r=>r.join(',')).join('\n');
     const label=from&&to?`${from}~${to}`:new Date().toISOString().slice(0,10);
