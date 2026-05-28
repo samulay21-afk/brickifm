@@ -312,12 +312,19 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
       </div>
     </div>
 
+    <!-- 근로자: 내 기록 -->
+    <div class="tp" id="tp-wr">
+      <div style="font-size:15px;font-weight:700;margin-bottom:11px">최근 7일 근무 기록</div>
+      <div id="wr-list"></div>
+    </div>
+
     <!-- 관리자: 현황 -->
     <div class="tp" id="tp-ah">
       <div style="margin-bottom:10px">
         <select class="fs" id="asite-sel" onchange="renderAH()"><option value="">전체 사업장</option></select>
       </div>
       <div class="sr sr4" id="astats"></div>
+      <div id="gps-alerts" style="display:none" class="card"><div class="ct" style="color:var(--ng)">⚠️ 이상 근태 알림</div><div id="gps-alert-list"></div></div>
       <div class="card"><div class="ct">오늘 근태 현황 <span id="live-badge" class="tag tok" style="font-size:9px;letter-spacing:0">● LIVE</span></div><div id="today-att"></div></div>
       <div class="card"><div class="ct">미완료 알림</div><div id="incomplete"></div></div>
     </div>
@@ -333,6 +340,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
         <input type="date" class="fi" id="rf-to" onchange="renderRec()" style="flex:1">
       </div>
       <div id="rec-summary" style="margin-bottom:11px"></div>
+      <div style="margin-bottom:11px">
+        <button class="btn bo bsm" onclick="toggleCal()" id="cal-toggle">📅 출결 캘린더 보기</button>
+        <div id="cal-view" style="display:none;margin-top:9px"></div>
+      </div>
       <div id="rec-list"></div>
     </div>
 
@@ -374,11 +385,21 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
         <button class="btn bo bfw" onclick="exportCSV()">📤 기록 CSV 내보내기</button>
         <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:5px">날짜 미선택 시 전체 내보내기</div>
       </div>
+      <div class="card">
+        <div class="ct">월간 리포트</div>
+        <div style="display:flex;gap:7px;margin-bottom:9px;align-items:center">
+          <input type="month" class="fi" id="report-month" style="flex:1">
+          <select class="fs" id="report-site" style="flex:1"><option value="">전체 사업장</option></select>
+        </div>
+        <button class="btn bp bfw" onclick="genMonthlyReport()">📊 월간 리포트 생성</button>
+        <div id="monthly-report" style="margin-top:11px"></div>
+      </div>
     </div>
   </div>
 
   <nav class="bn" id="bnav">
     <button class="nb hid on" id="bn-wh" onclick="goTab('wh')"><div class="ni">🏠</div><span>홈</span></button>
+    <button class="nb hid" id="bn-wr" onclick="goTab('wr')"><div class="ni">📋</div><span>내 기록</span></button>
     <button class="nb hid" id="bn-ah" onclick="goTab('ah')"><div class="ni">📊</div><span>현황</span></button>
     <button class="nb hid" id="bn-ar" onclick="goTab('ar')"><div class="ni">📋</div><span>기록</span></button>
     <button class="nb hid" id="bn-as" onclick="goTab('as')"><div class="ni">🏥</div><span>사업장</span></button>
@@ -446,11 +467,20 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
 </div></div>
 
 <div class="mo moc" id="m-gps"><div class="md">
-  <div class="mh"><div class="mt2">📍 위치 확인 불가</div><button class="mcl" onclick="cm('m-gps')">✕</button></div>
-  <div class="mb" style="text-align:center">
-    <div style="font-size:46px;margin:10px 0 12px">🚫</div>
-    <div style="font-size:15px;font-weight:700;margin-bottom:8px">현장 외부입니다</div>
-    <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:16px" id="gps-emsg"></div>
+  <div class="mh"><div class="mt2" id="gps-mtitle">📍 위치 확인</div><button class="mcl" onclick="cm('m-gps')">✕</button></div>
+  <div class="mb">
+    <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:12px" id="gps-emsg"></div>
+    <div id="gps-guide" style="display:none">
+      <div style="font-size:13px;line-height:1.8;margin-bottom:12px">
+        <div style="font-weight:700;margin-bottom:6px;color:var(--text)">Android (Chrome)</div>
+        <div style="color:var(--muted);padding-left:8px">1. 설정 → 앱 → Chrome → 권한 → 위치 → <b style="color:var(--text)">허용</b></div>
+        <div style="color:var(--muted);padding-left:8px">2. 또는 Chrome 주소창 왼쪽 자물쇠 → 위치 → 허용</div>
+        <div style="font-weight:700;margin-top:10px;margin-bottom:6px;color:var(--text)">iPhone (Safari)</div>
+        <div style="color:var(--muted);padding-left:8px">1. 설정 → 개인정보 보호 → 위치 서비스 → <b style="color:var(--text)">켜기</b></div>
+        <div style="color:var(--muted);padding-left:8px">2. 아래에서 Safari → <b style="color:var(--text)">앱 사용 중 허용</b></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:12px">설정 변경 후 이 페이지를 새로고침 해주세요</div>
+    </div>
     <button class="btn bo bfw" onclick="cm('m-gps')">확인</button>
   </div>
 </div></div>
@@ -670,22 +700,21 @@ function applyRole() {
       rb.textContent=`👔 ${site?.name||'사업장'} 관리자`; rb.className='rb rba';
       document.getElementById('hdr-t').textContent=site?.name||'사업장 관리자';
       ['ah','ar'].forEach(n=>document.getElementById('bn-'+n).classList.remove('hid'));
-      ['as','aw','aset'].forEach(n=>document.getElementById('bn-'+n).classList.add('hid'));
+      ['as','aw','aset','wh','wr'].forEach(n=>document.getElementById('bn-'+n).classList.add('hid'));
       document.getElementById('btn-add-worker').style.display='none';
-      document.getElementById('bn-wh').classList.add('hid');
     } else {
       // 슈퍼 관리자
       rb.textContent='👔 관리자'; rb.className='rb rba';
       document.getElementById('hdr-t').textContent='브릭IFM 관리자';
       ['ah','ar','as','aw','aset'].forEach(n=>document.getElementById('bn-'+n).classList.remove('hid'));
       document.getElementById('btn-add-worker').style.display='';
-      document.getElementById('bn-wh').classList.add('hid');
+      ['wh','wr'].forEach(n=>document.getElementById('bn-'+n).classList.add('hid'));
     }
   } else {
     rb.textContent=`🦺 ${cWorker.name}`; rb.className='rb rbw';
     const s=cachedSites.find(x=>x.id===cWorker.siteId);
     document.getElementById('hdr-t').textContent=s?.name||'현장 근무';
-    document.getElementById('bn-wh').classList.remove('hid');
+    ['wh','wr'].forEach(n=>document.getElementById('bn-'+n).classList.remove('hid'));
     ['ah','ar','as','aw','aset'].forEach(n=>document.getElementById('bn-'+n).classList.add('hid'));
   }
 }
@@ -702,26 +731,71 @@ function goTab(t) {
   if(t==='ah') { setupASel(); startLiveAH(); }
   else { if(liveUnsub&&t!=='ah') { liveUnsub(); liveUnsub=null; } if(liveSessionsUnsub&&t!=='ah') { liveSessionsUnsub(); liveSessionsUnsub=null; } }
   if(t==='ar') { setupRF(); renderRec(); }
+  if(t==='wr') renderWorkerRec();
   if(t==='as') renderSites();
   if(t==='aw') renderWorkers();
+  if(t==='aset') {
+    const rs=document.getElementById('report-site');
+    if(rs) rs.innerHTML='<option value="">전체 사업장</option>'+cachedSites.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+    if(!document.getElementById('report-month').value) {
+      const now=new Date();
+      document.getElementById('report-month').value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    }
+  }
 }
 
 // ══════════════════════════════════════
 // GPS
 // ══════════════════════════════════════
+let gpsPermDenied=false;
 function startGPS() {
   if(!navigator.geolocation) return;
   navigator.geolocation.watchPosition(
-    p=>{ lastGPS={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}; updGBar(); },
-    ()=>{ lastGPS=null; updGBar(); },
+    p=>{ gpsPermDenied=false; lastGPS={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}; updGBar(); },
+    (err)=>{
+      lastGPS=null;
+      if(err.code===1) { gpsPermDenied=true; } // PERMISSION_DENIED
+      updGBar();
+    },
     {enableHighAccuracy:true,timeout:15000,maximumAge:20000}
   );
 }
 function updGBar() {
   const dot=document.getElementById('gdot'), txt=document.getElementById('gtxt');
   if(!dot||!txt) return;
-  if(lastGPS) { dot.className='gdot gon'; txt.style.color='var(--ok)'; txt.textContent=`위치 확인됨 (정확도 ±${Math.round(lastGPS.acc)}m)`; }
-  else { dot.className='gdot gerr'; txt.style.color='var(--warn)'; txt.textContent='GPS 미확인 — 위치 없이 체크인됩니다'; }
+  if(!lastGPS) {
+    dot.className='gdot gerr';
+    if(gpsPermDenied) {
+      txt.style.color='var(--ng)';
+      txt.innerHTML='🚫 위치 권한 꺼짐 — <a href="javascript:showGPSGuide()" style="color:var(--Y);text-decoration:underline">설정 방법 보기</a>';
+    } else {
+      txt.style.color='var(--warn)';
+      txt.textContent='GPS 미확인 — 위치 없이 체크인됩니다';
+    }
+    return;
+  }
+  // 사업장 거리 계산
+  const s = cWorker ? cachedSites.find(x=>x.id===cWorker.siteId) : null;
+  if(s && s.lat && s.lng) {
+    const dist = Math.round(hav(lastGPS.lat, lastGPS.lng, +s.lat, +s.lng));
+    const limit = +(s.rad||100);
+    if(dist <= limit) {
+      dot.className='gdot gon'; txt.style.color='var(--ok)';
+      txt.textContent=`📍 현장 내 (${s.name}에서 ${dist}m)`;
+    } else {
+      dot.className='gdot gerr'; txt.style.color='var(--ng)';
+      txt.textContent=`⚠️ 현장 밖 (${s.name}에서 ${dist>=1000?(dist/1000).toFixed(1)+'km':dist+'m'} 떨어짐)`;
+    }
+  } else {
+    dot.className='gdot gon'; txt.style.color='var(--ok)';
+    txt.textContent=`위치 확인됨 (±${Math.round(lastGPS.acc)}m)`;
+  }
+}
+function showGPSGuide() {
+  document.getElementById('gps-mtitle').textContent='📍 위치 권한 설정 방법';
+  document.getElementById('gps-emsg').textContent='위치 권한이 꺼져있어 GPS 위치를 확인할 수 없습니다. 아래 안내를 따라 위치 권한을 켜주세요.';
+  document.getElementById('gps-guide').style.display='block';
+  om('m-gps');
 }
 function hav(la1,lo1,la2,lo2) {
   const R=6371000,f1=la1*Math.PI/180,f2=la2*Math.PI/180,df=(la2-la1)*Math.PI/180,dl=(lo2-lo1)*Math.PI/180;
@@ -747,8 +821,18 @@ function grabGPS() {
 // WORKER HOME
 // ══════════════════════════════════════
 function initWorker() {
-  // 세션이 현재 로그인한 근로자 것이 아니면 무시
   if(sess && sess.wId !== cWorker.id) { sess = null; }
+  // 24시간 초과 세션 자동 정리
+  if(sess && sess.checkIn && !sess.checkOut) {
+    const age=Date.now()-new Date(sess.checkIn).getTime();
+    if(age > 24*60*60*1000) {
+      const expiredSess={...sess, checkOut:new Date(new Date(sess.checkIn).getTime()+24*60*60*1000).toISOString(), memo:(sess.memo||'')+' [24시간 초과 자동 체크아웃]'};
+      C.records().doc(sess.id).set(expiredSess).catch(()=>{});
+      C.sessions().doc(sess.id).delete().catch(()=>{});
+      localStorage.removeItem('sess'); sess=null;
+      toast('이전 근무가 24시간 초과로 자동 마감되었습니다','wa');
+    }
+  }
   goTab('wh'); renderWH(); retryPending();
 }
 let whTimer=null;
@@ -779,17 +863,29 @@ function renderWH() {
 function gpsAct() { if(!sess||!sess.checkIn) doCheckIn(); else openCO(); }
 
 async function doCheckIn() {
+  // 중복 체크인 방지
+  if(sess && sess.checkIn && !sess.checkOut) {
+    toast('이미 체크인된 상태입니다','wa'); return;
+  }
   const s=cachedSites.find(x=>x.id===cWorker.siteId);
   if(!s) { toast('소속 사업장 없음. 관리자에게 문의하세요','ng'); return; }
+  // Firestore에 기존 활성 세션 확인
+  try {
+    const existing=await C.sessions().where('wId','==',cWorker.id).where('status','==','active').get();
+    if(!existing.empty) {
+      toast('이전 근무 기록이 남아있습니다. 관리자에게 문의하세요','wa'); return;
+    }
+  } catch(e) { /* 오프라인이면 무시하고 진행 */ }
   // GPS 위치 기록 (없으면 null로 기록, 체크인은 허용)
   const hasGPS=!!lastGPS;
   const lat=hasGPS?lastGPS.lat:null;
   const lng=hasGPS?lastGPS.lng:null;
-  // 범위 밖 체크인 판별
+  // 범위 밖 체크인 판별 (사업장 설정 반경 기준)
   let outOfRange=false;
+  let checkInDist=null;
   if(hasGPS && s.lat && s.lng) {
-    const dist=hav(lat,lng,+s.lat,+s.lng);
-    if(dist > 500) outOfRange=true;
+    checkInDist=Math.round(hav(lat,lng,+s.lat,+s.lng));
+    if(checkInDist > +(s.rad||100)) outOfRange=true;
   }
   // 직무별 체크리스트 로드
   const duties=getSiteDuties(s);
@@ -809,6 +905,7 @@ async function doCheckIn() {
     checkIn:new Date().toISOString(), checkInLat:lat, checkInLng:lng,
     checkOut:null, checkOutLat:null, checkOutLng:null,
     gpsStatus: hasGPS ? (outOfRange ? 'out' : 'ok') : 'none',
+    checkInDist: checkInDist,
     tasks:Object.fromEntries(tasks.map((_,i)=>[i,false])),
     taskLabels:tasks, photosB:[], photosA:[], memo:''
   };
@@ -838,7 +935,7 @@ async function doCheckout() {
   // 체크아웃 위치 범위 확인
   if(lastGPS) {
     const s=cachedSites.find(x=>x.id===sess.siteId);
-    if(s && s.lat && s.lng && hav(lastGPS.lat,lastGPS.lng,+s.lat,+s.lng) > 500) {
+    if(s && s.lat && s.lng && hav(lastGPS.lat,lastGPS.lng,+s.lat,+s.lng) > +(s.rad||100)) {
       sess.gpsStatus = (sess.gpsStatus==='out'||sess.gpsStatus==='none') ? sess.gpsStatus : 'out';
     }
   } else {
@@ -891,6 +988,47 @@ function renderTasks() {
   ).join('');
 }
 // togTask, updTP 제거 — 업무 항목은 텍스트 확인용
+
+// 근로자 본인 최근 7일 기록 조회
+async function renderWorkerRec() {
+  const el=document.getElementById('wr-list');
+  if(!cWorker) { el.innerHTML=''; return; }
+  el.innerHTML='<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">불러오는 중...</div>';
+  try {
+    const d7=new Date(); d7.setDate(d7.getDate()-7);
+    const from=d7.toISOString().slice(0,10);
+    const snap=await C.records().where('wId','==',cWorker.id).where('checkIn','>=',from).orderBy('checkIn','desc').get();
+    const recs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!recs.length) { el.innerHTML='<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">최근 7일간 기록 없음</div>'; return; }
+    // 총 근무시간 계산
+    const totalHrs=recs.filter(r=>r.checkOut).reduce((a,r)=>{return a+(new Date(r.checkOut)-new Date(r.checkIn))/3600000;},0);
+    el.innerHTML=`<div style="display:flex;gap:10px;margin-bottom:12px">
+      <div style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--r3);padding:10px;text-align:center">
+        <div style="font-size:18px;font-weight:700;color:var(--ok)">${recs.length}</div><div style="font-size:11px;color:var(--muted)">총 출근</div>
+      </div>
+      <div style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--r3);padding:10px;text-align:center">
+        <div style="font-size:18px;font-weight:700;color:var(--Y)">${totalHrs.toFixed(1)}h</div><div style="font-size:11px;color:var(--muted)">총 근무</div>
+      </div>
+    </div>`+recs.map(r=>{
+      const date=r.checkIn.slice(0,10);
+      const day=['일','월','화','수','목','금','토'][new Date(r.checkIn).getDay()];
+      const gpsTag=r.gpsStatus==='out'?' · <span style="color:var(--ng)">현장 밖</span>':r.gpsStatus==='none'?' · <span style="color:var(--warn)">GPS 미확인</span>':'';
+      return`<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r3);padding:10px 12px;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:13px;font-weight:700">${date} ${day}</span>
+          <span style="font-size:12px;color:var(--muted)">${r.siteName||''}${r.duty?' · '+r.duty:''}</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6">
+          출근 ${fmtT(r.checkIn)} → ${r.checkOut?'퇴근 '+fmtT(r.checkOut):'<span style="color:var(--warn)">미퇴근</span>'}
+          ${r.checkOut?' · '+elapsedB(r.checkIn,r.checkOut):''}${gpsTag}
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML='<div style="text-align:center;padding:20px;color:var(--ng);font-size:12px">기록을 불러올 수 없습니다</div>';
+    console.warn('worker rec err',e);
+  }
+}
 function setPtab(t) {
   pTab=t;
   document.getElementById('ptb-b').classList.toggle('on',t==='b');
@@ -907,7 +1045,28 @@ function compressImg(file, maxW=800, quality=0.7) {
       let w=img.width, h=img.height;
       if(w>maxW){h=h*maxW/w;w=maxW;}
       c.width=w;c.height=h;
-      c.getContext('2d').drawImage(img,0,0,w,h);
+      const ctx=c.getContext('2d');
+      ctx.drawImage(img,0,0,w,h);
+      // 워터마크
+      const now=new Date();
+      const ts=`${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      const info=sess?`${sess.siteName||''} · ${sess.wName||''}`:'';
+      const loc=lastGPS?`GPS ${lastGPS.lat.toFixed(4)}, ${lastGPS.lng.toFixed(4)}`:'';
+      const lines=[ts, info, loc].filter(l=>l);
+      const fontSize=Math.max(12, Math.round(w*0.022));
+      ctx.font=`${fontSize}px sans-serif`;
+      ctx.textAlign='right';
+      // 배경 반투명 박스
+      const lineH=fontSize*1.4;
+      const boxH=lines.length*lineH+8;
+      const boxW=Math.max(...lines.map(l=>ctx.measureText(l).width))+16;
+      ctx.fillStyle='rgba(0,0,0,0.5)';
+      ctx.fillRect(w-boxW-6, h-boxH-6, boxW+2, boxH+2);
+      // 텍스트
+      ctx.fillStyle='#fff';
+      lines.forEach((line,i)=>{
+        ctx.fillText(line, w-14, h-boxH+4+(i+1)*lineH);
+      });
       c.toBlob(b=>res(b),'image/jpeg',quality);
     };
     img.src=URL.createObjectURL(file);
@@ -973,12 +1132,28 @@ function startLiveAH() {
       cachedRecords = snap.docs.map(d=>({id:d.id,...d.data()}));
       renderAH();
     }, err=>console.warn('live err',err));
-  // 근무 중 세션 실시간 구독
   liveSessionsUnsub = C.sessions()
     .onSnapshot(snap=>{
       cachedLiveSessions = snap.docs.map(d=>({id:d.id,...d.data()}));
+      autoCheckoutExpired(); // 24시간 초과 세션 자동 처리
       renderAH();
     }, err=>console.warn('sess live err',err));
+}
+// 24시간 초과 세션 자동 체크아웃
+async function autoCheckoutExpired() {
+  const now=Date.now(), limit=24*60*60*1000;
+  for(const s of cachedLiveSessions) {
+    if(!s.checkIn) continue;
+    const age=now-new Date(s.checkIn).getTime();
+    if(age>limit) {
+      try {
+        const rec={...s, checkOut:new Date(new Date(s.checkIn).getTime()+limit).toISOString(), memo:(s.memo||'')+' [24시간 초과 자동 체크아웃]'};
+        delete rec.status;
+        await C.records().doc(s.id).set(rec);
+        await C.sessions().doc(s.id).delete();
+      } catch(e) { console.warn('auto checkout err',e); }
+    }
+  }
 }
 
 function setupASel() {
@@ -1019,7 +1194,7 @@ function renderAH() {
       return`<div class="ai2" style="border-color:rgba(45,212,191,.3)">
         <div class="ah2"><div class="an">${s.wName} <span style="font-size:11px;color:var(--muted)">${s.siteName}${s.duty?' · '+s.duty:''}</span></div>
           <span class="tag tok" style="animation:pulse2 2s ease infinite">● 근무 중</span>
-          ${s.gpsStatus==='out'?'<span class="tag tng2">📍 현장 밖</span>':s.gpsStatus==='none'?'<span class="tag twa2">📍 GPS 미확인</span>':''}</div>
+          ${s.gpsStatus==='out'?`<span class="tag tng2">📍 현장 밖${s.checkInDist?' ('+s.checkInDist+'m)':''}</span>`:s.gpsStatus==='none'?'<span class="tag twa2">📍 GPS 미확인</span>':''}</div>
         <div class="atimes">
           <div class="atime"><span class="atl">출근</span><span class="atv cin">${fmtT(s.checkIn)}</span></div>
           <div class="atime"><span class="atl">경과</span><span class="atv">${elapsed(s.checkIn)}</span></div>
@@ -1038,7 +1213,7 @@ function renderAH() {
       return`<div class="ai2" onclick="openRec('${r.id}')">
         <div class="ah2"><div class="an">${r.wName} <span style="font-size:11px;color:var(--muted)">${r.siteName}${r.duty?' · '+r.duty:''}</span></div>
           ${r.checkOut?'<span class="tag tok">퇴근</span>':'<span class="tag twa">미퇴근</span>'}
-          ${r.gpsStatus==='out'?'<span class="tag tng2">📍 현장 밖</span>':r.gpsStatus==='none'?'<span class="tag twa2">📍 GPS 미확인</span>':''}</div>
+          ${r.gpsStatus==='out'?`<span class="tag tng2">📍 현장 밖${r.checkInDist?' ('+r.checkInDist+'m)':''}</span>`:r.gpsStatus==='none'?'<span class="tag twa2">📍 GPS 미확인</span>':''}</div>
         <div class="atimes">
           <div class="atime"><span class="atl">출근</span><span class="atv cin">${fmtT(r.checkIn)}</span></div>
           ${r.checkOut?`<div class="atime"><span class="atl">퇴근</span><span class="atv cout">${fmtT(r.checkOut)}</span></div>`:''}
@@ -1057,6 +1232,20 @@ function renderAH() {
         <div style="font-size:13px;font-weight:700;margin-bottom:5px;color:var(--ng)">⚠️ ${r.wName} — ${r.siteName}</div>
         ${nd.map(t=>`<div style="font-size:12px;color:var(--muted);padding:1px 0">• ${t}</div>`).join('')}
       </div>`;}).join('');
+  // 이상 근태 알림 (현장 밖 + GPS 미확인)
+  const alertEl=document.getElementById('gps-alerts');
+  const alertList=document.getElementById('gps-alert-list');
+  const alerts=[...live.filter(s=>s.gpsStatus==='out'||s.gpsStatus==='none'),...tr.filter(r=>r.gpsStatus==='out'||r.gpsStatus==='none')];
+  if(alerts.length) {
+    alertEl.style.display='block';
+    alertList.innerHTML=alerts.map(r=>{
+      const tag=r.gpsStatus==='out'?`현장 밖${r.checkInDist?' ('+r.checkInDist+'m)':''}`:'GPS 미확인';
+      const time=fmtT(r.checkIn);
+      return`<div style="padding:8px;background:rgba(244,63,94,.06);border:1px solid rgba(244,63,94,.15);border-radius:var(--r3);margin-bottom:5px;font-size:12px">
+        <span style="font-weight:700">${r.wName}</span> · ${r.siteName} · ${time} · <span style="color:var(--ng)">${tag}</span>
+      </div>`;
+    }).join('');
+  } else { alertEl.style.display='none'; }
 }
 
 // ══════════════════════════════════════
@@ -1135,7 +1324,7 @@ async function openRec(id) {
     <div class="dr"><div class="dico">👤</div><div><div class="dlb">근로자</div><div class="dvl">${r.wName}</div></div></div>
     <div class="dr"><div class="dico">🏥</div><div><div class="dlb">사업장</div><div class="dvl">${r.siteName}${r.duty?' · '+r.duty:''}</div></div></div>
     <div class="dr"><div class="dico">🟢</div><div><div class="dlb">체크인</div><div class="dvl" style="color:var(--ok)">${fmtDT(r.checkIn)}</div></div></div>
-    ${r.checkInLat?`<div class="dr"><div class="dico">📍</div><div><div class="dlb">체크인 위치${r.gpsStatus==='out'?' <span style="color:var(--ng)">⚠️ 현장 밖</span>':r.gpsStatus==='none'?' <span style="color:var(--warn)">GPS 미확인</span>':' <span style="color:var(--ok)">✓ 현장 내</span>'}</div><div class="dvl" style="font-family:var(--mono);font-size:12px">${(+r.checkInLat).toFixed(5)}, ${(+r.checkInLng).toFixed(5)}</div></div></div>`:`<div class="dr"><div class="dico">📍</div><div><div class="dlb">체크인 위치</div><div class="dvl" style="color:var(--warn)">GPS 미확인</div></div></div>`}
+    ${r.checkInLat?`<div class="dr"><div class="dico">📍</div><div><div class="dlb">체크인 위치${r.gpsStatus==='out'?` <span style="color:var(--ng)">⚠️ 현장 밖${r.checkInDist?' ('+r.checkInDist+'m)':''}</span>`:r.gpsStatus==='none'?' <span style="color:var(--warn)">GPS 미확인</span>':' <span style="color:var(--ok)">✓ 현장 내</span>'}</div><div class="dvl" style="font-family:var(--mono);font-size:12px">${(+r.checkInLat).toFixed(5)}, ${(+r.checkInLng).toFixed(5)}</div></div></div>`:`<div class="dr"><div class="dico">📍</div><div><div class="dlb">체크인 위치</div><div class="dvl" style="color:var(--warn)">GPS 미확인</div></div></div>`}
     ${r.checkOut?`<div class="dr"><div class="dico">🔴</div><div><div class="dlb">체크아웃</div><div class="dvl" style="color:var(--O)">${fmtDT(r.checkOut)}</div></div></div>`:''}
     ${r.checkOut?`<div class="dr"><div class="dico">⏱</div><div><div class="dlb">총 근무시간</div><div class="dvl">${elapsedB(r.checkIn,r.checkOut)}</div></div></div>`:''}`;
   h+=`<div class="divider"></div><div class="ct" style="margin-bottom:9px">업무 체크리스트 (${done}/${total})</div>`;
@@ -1267,12 +1456,29 @@ function renderSites() {
         const tc=(d.tasks||'').split('\n').filter(t=>t.trim());
         return`<div style="margin-bottom:5px"><span class="tag tbl">${d.name}</span><span style="font-size:11px;color:var(--muted)">${tc.length}개 업무</span></div>`;
       }).join(''):''}
+      ${s.adminPin?`<button class="btn bi bsm bfw" style="margin-top:5px" onclick="shareSiteAdminLink('${s.name}','${s.adminPin}')">📩 관리자 링크 공유</button>`:''}
     </div>`;
   }).join('');
 }
 async function delSite(id) {
   if(!confirm('사업장을 삭제하시겠습니까?')) return;
   try { await C.sites().doc(id).delete(); cachedSites=cachedSites.filter(s=>s.id!==id); renderSites(); toast('삭제됨'); } catch(e) { toast('삭제 실패','ng'); }
+}
+function shareSiteAdminLink(siteName, pin) {
+  const base=location.href.replace(/\/[^\/]*(\?.*)?$/,'');
+  const appUrl=base+'/index.html';
+  const msg=`[브릭IFM 현장관리]\n\n${siteName} 사업장 실시간 근태 모니터링\n\n📲 접속: ${appUrl}\n🔑 관리자 PIN: ${pin}\n\n접속 후 「관리자」 선택 → PIN 입력\n\n현황 조회 · 기록 확인 · 강제 체크아웃 가능`;
+  if(navigator.share) {
+    navigator.share({title:`${siteName} 관리자`, text:msg}).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(msg).then(()=>{
+      toast('관리자 링크+PIN 복사됨!','ok');
+    }).catch(()=>{
+      const t=document.createElement('textarea');t.value=msg;t.style.cssText='position:fixed;left:-9999px';
+      document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);
+      toast('관리자 링크+PIN 복사됨!','ok');
+    });
+  }
 }
 
 // ══════════════════════════════════════
@@ -1390,6 +1596,108 @@ async function exportCSV() {
     const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'})); a.download=`근무기록_${label}.csv`; a.click();
     toast(`CSV 내보내기 완료 (${recs.length}건)`,'ok');
   } catch(e) { toast('내보내기 실패','ng'); }
+}
+
+async function genMonthlyReport() {
+  const monthVal=document.getElementById('report-month').value;
+  if(!monthVal) { toast('월을 선택하세요','wa'); return; }
+  const siteId=document.getElementById('report-site').value;
+  const el=document.getElementById('monthly-report');
+  el.innerHTML='<div style="text-align:center;color:var(--muted);font-size:12px;padding:10px">생성 중...</div>';
+  try {
+    const [year,month]=monthVal.split('-').map(Number);
+    const from=`${year}-${String(month).padStart(2,'0')}-01`;
+    const last=new Date(year,month,0).getDate();
+    const to=`${year}-${String(month).padStart(2,'0')}-${last}`;
+    const snap=await C.records().where('checkIn','>=',from).where('checkIn','<=',to+'T23:59:59').orderBy('checkIn').get();
+    let recs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(siteId) recs=recs.filter(r=>r.siteId===siteId);
+    if(!recs.length) { el.innerHTML='<div style="text-align:center;color:var(--muted);font-size:12px;padding:10px">해당 월 기록 없음</div>'; return; }
+    // 근로자별 집계
+    const workers={};
+    recs.forEach(r=>{
+      if(!workers[r.wName]) workers[r.wName]={days:new Set(),hours:0,outCount:0,noneCount:0,site:r.siteName,duty:r.duty||''};
+      const w=workers[r.wName];
+      w.days.add(r.checkIn.slice(0,10));
+      if(r.checkOut) w.hours+=(new Date(r.checkOut)-new Date(r.checkIn))/3600000;
+      if(r.gpsStatus==='out') w.outCount++;
+      if(r.gpsStatus==='none') w.noneCount++;
+    });
+    // 전체 요약
+    const totalDays=new Set(recs.map(r=>r.checkIn.slice(0,10))).size;
+    const totalHrs=recs.filter(r=>r.checkOut).reduce((a,r)=>a+(new Date(r.checkOut)-new Date(r.checkIn))/3600000,0);
+    const outTotal=recs.filter(r=>r.gpsStatus==='out').length;
+    const siteName=siteId?cachedSites.find(s=>s.id===siteId)?.name:'전체 사업장';
+    el.innerHTML=`<div style="font-size:14px;font-weight:700;margin-bottom:8px">${year}년 ${month}월 · ${siteName}</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:80px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r3);padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:700;color:var(--ok)">${recs.length}</div><div style="font-size:10px;color:var(--muted)">총 출근</div></div>
+        <div style="flex:1;min-width:80px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r3);padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:700;color:var(--Y)">${totalHrs.toFixed(1)}h</div><div style="font-size:10px;color:var(--muted)">총 근무</div></div>
+        <div style="flex:1;min-width:80px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r3);padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:700;color:var(--B)">${totalDays}</div><div style="font-size:10px;color:var(--muted)">근무일수</div></div>
+        <div style="flex:1;min-width:80px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r3);padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:700;color:${outTotal?'var(--ng)':'var(--ok)'}">${outTotal}</div><div style="font-size:10px;color:var(--muted)">현장 밖</div></div>
+      </div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px">근로자별</div>
+      ${Object.entries(workers).map(([name,w])=>`<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r3);padding:8px 10px;margin-bottom:5px;font-size:12px;display:flex;justify-content:space-between;align-items:center">
+        <div><span style="font-weight:700">${name}</span><span style="color:var(--muted)"> · ${w.site}${w.duty?' · '+w.duty:''}</span></div>
+        <div style="display:flex;gap:10px;color:var(--muted)"><span>${w.days.size}일</span><span>${w.hours.toFixed(1)}h</span>${w.outCount?`<span style="color:var(--ng)">밖${w.outCount}</span>`:''}</div>
+      </div>`).join('')}
+      <button class="btn bo bfw" style="margin-top:10px" onclick="exportMonthlyCSV('${monthVal}','${siteId}')">📤 CSV 다운로드</button>`;
+  } catch(e) { el.innerHTML='<div style="color:var(--ng);font-size:12px">리포트 생성 실패</div>'; console.warn(e); }
+}
+function exportMonthlyCSV(monthVal, siteId) {
+  toast('CSV는 상단 데이터 내보내기에서 날짜 설정 후 이용하세요','wa');
+}
+
+function toggleCal() {
+  const cv=document.getElementById('cal-view');
+  if(cv.style.display==='none') { cv.style.display='block'; renderCalendar(); document.getElementById('cal-toggle').textContent='📅 캘린더 닫기'; }
+  else { cv.style.display='none'; document.getElementById('cal-toggle').textContent='📅 출결 캘린더 보기'; }
+}
+async function renderCalendar() {
+  const cv=document.getElementById('cal-view');
+  const sf=document.getElementById('rf-site')?.value;
+  const fromVal=document.getElementById('rf-from')?.value;
+  if(!fromVal) { cv.innerHTML='<div style="color:var(--muted);font-size:12px;text-align:center;padding:10px">시작 날짜를 선택하세요</div>'; return; }
+  cv.innerHTML='<div style="color:var(--muted);font-size:12px;text-align:center;padding:10px">불러오는 중...</div>';
+  const dt=new Date(fromVal);
+  const year=dt.getFullYear(), month=dt.getMonth();
+  const firstDay=new Date(year,month,1).getDay();
+  const lastDate=new Date(year,month+1,0).getDate();
+  try {
+    const from=`${year}-${String(month+1).padStart(2,'0')}-01`;
+    const to=`${year}-${String(month+1).padStart(2,'0')}-${lastDate}`;
+    const snap=await C.records().where('checkIn','>=',from).where('checkIn','<=',to+'T23:59:59').orderBy('checkIn').get();
+    let recs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(sf) recs=recs.filter(r=>r.siteId===sf);
+    const byDate={};
+    recs.forEach(r=>{
+      const day=parseInt(r.checkIn.slice(8,10));
+      if(!byDate[day]) byDate[day]=[];
+      byDate[day].push(r);
+    });
+    const days=['일','월','화','수','목','금','토'];
+    let html=`<div style="font-size:13px;font-weight:700;margin-bottom:8px;text-align:center">${year}년 ${month+1}월</div>`;
+    html+=`<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:11px;text-align:center">`;
+    days.forEach((d,i)=>html+=`<div style="padding:4px;color:${i===0?'var(--ng)':i===6?'var(--B)':'var(--muted)'};font-weight:700">${d}</div>`);
+    for(let i=0;i<firstDay;i++) html+='<div></div>';
+    for(let day=1;day<=lastDate;day++) {
+      const workers=byDate[day]||[];
+      const hasOut=workers.some(r=>r.gpsStatus==='out');
+      const bg=workers.length?hasOut?'rgba(244,63,94,.15)':'rgba(45,212,191,.1)':'transparent';
+      const border=workers.length?hasOut?'1px solid rgba(244,63,94,.3)':'1px solid rgba(45,212,191,.2)':'1px solid var(--border)';
+      const dow=new Date(year,month,day).getDay();
+      const numColor=dow===0?'var(--ng)':dow===6?'var(--B)':'var(--text)';
+      html+=`<div style="padding:4px 2px;background:${bg};border:${border};border-radius:4px;min-height:36px">
+        <div style="font-weight:700;color:${numColor};font-size:12px">${day}</div>
+        ${workers.length?`<div style="font-size:9px;color:var(--ok)">${workers.length}명</div>`:''}
+      </div>`;
+    }
+    html+='</div>';
+    cv.innerHTML=html;
+  } catch(e) { cv.innerHTML='<div style="color:var(--ng);font-size:12px">캘린더 로드 실패</div>'; }
 }
 
 // ══════════════════════════════════════
