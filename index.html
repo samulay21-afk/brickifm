@@ -617,19 +617,23 @@ function autoSelectWorker() {
   const w = cachedWorkers.find(x => x.id === wId);
   if (!w) return;
   directWorkerId = wId;
-  // 이전에 로그인한 적 있으면 자동 로그인
-  const saved = localStorage.getItem('lastWorker');
-  if (saved === wId) {
-    try {
-      selW = w; cWorker = w; role = 'worker';
-      setTimeout(() => enterApp(), 100); // 화면 전환 타이밍 확보
-    } catch(e) {
-      console.warn('auto login err', e);
-      localStorage.removeItem('lastWorker');
-      showLoginForWorker(w);
-    }
+
+  // 케이스 1: 이 근로자의 활성 세션이 있으면 → PIN 없이 바로 진입
+  if (sess && sess.wId === wId && sess.checkIn && !sess.checkOut) {
+    selW = w; cWorker = w; role = 'worker';
+    localStorage.setItem('lastWorker', wId);
+    setTimeout(() => { try { enterApp(); } catch(e) { showLoginForWorker(w); } }, 150);
     return;
   }
+
+  // 케이스 2: 이전에 로그인한 적 있고 세션이 없는 경우 → PIN 없이 진입 (체크인 전 상태)
+  if (localStorage.getItem('lastWorker') === wId) {
+    selW = w; cWorker = w; role = 'worker';
+    setTimeout(() => { try { enterApp(); } catch(e) { showLoginForWorker(w); } }, 150);
+    return;
+  }
+
+  // 케이스 3: 처음이면 → PIN 입력
   showLoginForWorker(w);
 }
 function showLoginForWorker(w) {
@@ -714,7 +718,7 @@ function enterApp() {
     showScreen('s-app');
     applyRole();
     if(role==='admin') initAdmin();
-    else initWorker();
+    else initWorker().catch(e=>console.warn('initWorker err',e));
   } catch(e) {
     console.warn('enterApp err', e);
     showScreen('s-login');
@@ -863,8 +867,19 @@ function grabGPS() {
 // ══════════════════════════════════════
 // WORKER HOME
 // ══════════════════════════════════════
-function initWorker() {
+async function initWorker() {
   if(sess && sess.wId !== cWorker.id) { sess = null; }
+  // localStorage에 세션 없으면 Firestore에서 복원 시도
+  if(!sess || !sess.checkIn || sess.checkOut) {
+    try {
+      const snap=await C.sessions().where('wId','==',cWorker.id).where('status','==','active').get();
+      if(!snap.empty) {
+        const doc=snap.docs[0];
+        sess={id:doc.id,...doc.data()};
+        localStorage.setItem('sess',JSON.stringify(sess));
+      }
+    } catch(e) { /* 오프라인이면 무시 */ }
+  }
   // 24시간 초과 세션 자동 정리
   if(sess && sess.checkIn && !sess.checkOut) {
     const age=Date.now()-new Date(sess.checkIn).getTime();
@@ -1041,8 +1056,11 @@ async function renderWorkerRec() {
   try {
     const d7=new Date(); d7.setDate(d7.getDate()-7);
     const from=d7.toISOString().slice(0,10);
-    const snap=await C.records().where('wId','==',cWorker.id).where('checkIn','>=',from).orderBy('checkIn','desc').get();
-    const recs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    // 인덱스 불필요: wId로만 필터 → JS에서 날짜 필터
+    const snap=await C.records().where('wId','==',cWorker.id).get();
+    let recs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    recs=recs.filter(r=>r.checkIn&&r.checkIn.slice(0,10)>=from);
+    recs.sort((a,b)=>(b.checkIn||'').localeCompare(a.checkIn||''));
     if(!recs.length) { el.innerHTML='<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">최근 7일간 기록 없음</div>'; return; }
     // 총 근무시간 계산
     const totalHrs=recs.filter(r=>r.checkOut).reduce((a,r)=>{return a+(new Date(r.checkOut)-new Date(r.checkIn))/3600000;},0);
