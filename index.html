@@ -620,14 +620,22 @@ function autoSelectWorker() {
   // 이전에 로그인한 적 있으면 자동 로그인
   const saved = localStorage.getItem('lastWorker');
   if (saved === wId) {
-    selW = w; cWorker = w; role = 'worker';
-    enterApp();
+    try {
+      selW = w; cWorker = w; role = 'worker';
+      setTimeout(() => enterApp(), 100); // 화면 전환 타이밍 확보
+    } catch(e) {
+      console.warn('auto login err', e);
+      localStorage.removeItem('lastWorker');
+      showLoginForWorker(w);
+    }
     return;
   }
-  // 첫 접속이면 PIN 입력 화면
+  showLoginForWorker(w);
+}
+function showLoginForWorker(w) {
   document.querySelector('.rtabs').style.display = 'none';
   selRole('worker');
-  selWorker(wId);
+  selWorker(w.id);
   document.getElementById('wsec').style.display = 'none';
   const site = cachedSites.find(x => x.id === w.siteId);
   document.getElementById('plbl').innerHTML = `<div style="font-size:15px;font-weight:700;margin-bottom:4px">${w.name}</div><div style="font-size:11px;color:var(--muted);margin-bottom:8px">${site?.name || ''}</div>PIN 입력`;
@@ -702,10 +710,15 @@ function loginErr() {
   setTimeout(()=>{ pinBuf=''; updPD([]); }, 600);
 }
 function enterApp() {
-  showScreen('s-app');
-  applyRole();
-  if(role==='admin') initAdmin();
-  else initWorker();
+  try {
+    showScreen('s-app');
+    applyRole();
+    if(role==='admin') initAdmin();
+    else initWorker();
+  } catch(e) {
+    console.warn('enterApp err', e);
+    showScreen('s-login');
+  }
 }
 function logout() {
   if(liveUnsub) { liveUnsub(); liveUnsub=null; }
@@ -871,6 +884,7 @@ function renderWH() {
   const banner=document.getElementById('wbanner');
   const gbtn=document.getElementById('gbtn');
   const tsec=document.getElementById('tsec');
+  if(!banner||!gbtn||!tsec) return; // DOM 미준비 시 안전 종료
   if(!sess||!sess.checkIn) {
     banner.innerHTML=`<div class="sb sb-idle"><div class="sbi">🌙</div><div class="sbx"><div class="sbt">아직 체크인 전이에요</div><div class="sbs">현장 도착 후 GPS 체크인을 눌러주세요</div></div></div>`;
     gbtn.className='gb gb-in'; document.getElementById('gbico').textContent='📍'; document.getElementById('gbtxt').textContent='GPS 체크인';
