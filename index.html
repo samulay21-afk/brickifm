@@ -234,9 +234,33 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
 @keyframes pulse2{0%,100%{opacity:1}50%{opacity:.5}}
 #m-photo .md{background:transparent;border:none;max-width:none}
 #m-photo{align-items:center;justify-content:center}
+/* 근로자 화면 가독성 */
+#tp-wh .sb .sbt{font-size:17px}
+#tp-wh .sb .sbs{font-size:14px}
+#tp-wh .sb .sbtime{font-size:14px}
+#tp-wh .ct{font-size:15px}
+#tp-wh .card{font-size:14px}
+.gb{font-size:17px;padding:18px}
+.gbar{font-size:13px}
 </style>
 </head>
 <body>
+
+<!-- 카톡 인앱 브라우저 감지 → Chrome으로 리다이렉트 -->
+<script>
+(function(){
+  const ua=navigator.userAgent;
+  if(/KAKAOTALK|NAVER|FBAN|FBAV|Instagram|Line|DaumApps/i.test(ua) && /android/i.test(ua)){
+    const url=location.href.replace(/^https?:\/\//,'');
+    location.href='intent://'+url+'#Intent;scheme=https;package=com.android.chrome;end';
+  }
+  if(/KAKAOTALK|NAVER|FBAN|FBAV|Instagram|Line/i.test(ua) && /iphone|ipad/i.test(ua)){
+    document.addEventListener('DOMContentLoaded',function(){
+      document.body.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#0A0E1A;color:#EEF2FF;font-family:sans-serif;padding:24px;text-align:center"><div style="font-size:36px;margin-bottom:16px">🌐</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">Safari에서 열어주세요</div><div style="font-size:13px;color:#6B7FA8;line-height:1.7;margin-bottom:20px">하단 공유 버튼(⬆) → 「Safari로 열기」</div><div style="font-size:12px;color:#6B7FA8">또는 주소를 복사해서 Safari에 붙여넣기</div><button onclick="navigator.clipboard.writeText(location.href).then(()=>this.textContent=\'복사됨!\')" style="margin-top:16px;background:#F5C400;color:#0A0E1A;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer">주소 복사</button></div>';
+    });
+  }
+})();
+</script>
 
 <!-- LOADING -->
 <div class="screen on" id="s-loading">
@@ -584,7 +608,7 @@ window.onload = async () => {
   startGPS();
 };
 
-let directWorkerId = null; // URL 파라미터로 들어온 근로자 ID
+let directWorkerId = null;
 
 function autoSelectWorker() {
   const params = new URLSearchParams(location.search);
@@ -593,12 +617,17 @@ function autoSelectWorker() {
   const w = cachedWorkers.find(x => x.id === wId);
   if (!w) return;
   directWorkerId = wId;
-  // 역할 선택 탭 숨기기
+  // 이전에 로그인한 적 있으면 자동 로그인
+  const saved = localStorage.getItem('lastWorker');
+  if (saved === wId) {
+    selW = w; cWorker = w; role = 'worker';
+    enterApp();
+    return;
+  }
+  // 첫 접속이면 PIN 입력 화면
   document.querySelector('.rtabs').style.display = 'none';
-  // 근로자 모드 + 자동 선택
   selRole('worker');
   selWorker(wId);
-  // 근로자 목록 숨기고 이름만 표시
   document.getElementById('wsec').style.display = 'none';
   const site = cachedSites.find(x => x.id === w.siteId);
   document.getElementById('plbl').innerHTML = `<div style="font-size:15px;font-weight:700;margin-bottom:4px">${w.name}</div><div style="font-size:11px;color:var(--muted);margin-bottom:8px">${site?.name || ''}</div>PIN 입력`;
@@ -663,7 +692,7 @@ function tryLogin() {
     loginErr();
   } else {
     if(!selW) { toast('근로자를 먼저 선택하세요','wa'); pinBuf=''; updPD([]); return; }
-    if(pinBuf===selW.pin) { role='worker'; cWorker=selW; enterApp(); }
+    if(pinBuf===selW.pin) { role='worker'; cWorker=selW; localStorage.setItem('lastWorker',selW.id); enterApp(); }
     else loginErr();
   }
 }
@@ -683,6 +712,7 @@ function logout() {
   if(liveSessionsUnsub) { liveSessionsUnsub(); liveSessionsUnsub=null; }
   if(whTimer) { clearInterval(whTimer); whTimer=null; }
   role=null; cWorker=null; pinBuf=''; updPD([]); selW=null; loginRole='admin'; adminSiteId=null;
+  localStorage.removeItem('lastWorker');
   // 개인 링크 상태면 역할 탭 복원
   if(directWorkerId) { document.querySelector('.rtabs').style.display=''; directWorkerId=null; }
   document.getElementById('rt-admin').classList.add('on');
@@ -1541,13 +1571,12 @@ function renderWorkers() {
 function shareWorkerLink(id, name, pin) {
   const base = location.href.replace(/\/[^\/]*(\?.*)?$/, '');
   const appUrl = base + '/index.html?w=' + id;
-  const installUrl = base + '/install.html';
-  const msg = `[브릭IFM 현장관리]\n\n${name}님, 아래 링크로 출퇴근 체크인 해주세요.\n\n📲 바로 사용: ${appUrl}\n🔑 PIN: ${pin}\n\n링크 열기 → PIN 입력 → 체크인\n\n💡 홈화면에 앱 설치: ${installUrl}`;
+  const msg = `[브릭IFM]\n\n${name}님 출퇴근 링크입니다.\n\n👉 ${appUrl}\n비밀번호: ${pin}\n\n매일 이 링크 누르고 → 비밀번호 입력하면 됩니다.`;
   if (navigator.share) {
     navigator.share({ title: '브릭IFM', text: msg }).catch(() => {});
   } else {
     navigator.clipboard.writeText(msg).then(() => {
-      toast('링크+PIN 복사됨! 카톡에 붙여넣기','ok');
+      toast('링크+PIN 복사됨!','ok');
     }).catch(() => {
       const t=document.createElement('textarea');t.value=msg;t.style.cssText='position:fixed;left:-9999px';
       document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);
