@@ -456,6 +456,20 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
   </div>
 </div></div>
 
+<!-- 앱 종료 확인 -->
+<div class="mo moc" id="m-exit"><div class="md">
+  <div class="mh"><div class="mt2">앱 종료</div><button class="mcl" onclick="cm('m-exit')">✕</button></div>
+  <div class="mb" style="text-align:center">
+    <div style="font-size:42px;margin:8px 0 11px">👋</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:8px">앱을 종료하시겠어요?</div>
+    <div id="exit-msg" style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.7"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn bo bfw" onclick="cm('m-exit')" style="font-size:14px;padding:13px">계속 사용</button>
+      <button class="btn bd bfw" onclick="confirmExit()" style="font-size:14px;padding:13px">종료하기</button>
+    </div>
+  </div>
+</div></div>
+
 <div class="mo moc" id="m-co"><div class="md">
   <div class="mh"><div class="mt2">체크아웃</div><button class="mcl" onclick="cm('m-co')">✕</button></div>
   <div class="mb" style="text-align:center">
@@ -1309,6 +1323,44 @@ function pinHelp(){alert('기본 관리자 PIN: 0000\n근로자 PIN은 관리자
 // ══════════════════════════════════════
 // PWA
 // ══════════════════════════════════════
+// ══════════════════════════════════════
+// 뒤로가기 종료 방지
+// ══════════════════════════════════════
+let exitConfirmed = false;
+
+// 히스토리에 더미 상태 추가 (뒤로가기 가로채기용)
+history.pushState({page:'app'}, '', location.href);
+
+window.addEventListener('popstate', (e) => {
+  if (exitConfirmed) return; // 종료 확정 시 통과
+
+  // 모달이 열려있으면 모달만 닫기
+  const openModal = document.querySelector('.mo.on');
+  if (openModal) {
+    openModal.classList.remove('on');
+    history.pushState({page:'app'}, '', location.href);
+    return;
+  }
+
+  // 종료 확인 팝업 표시
+  const msgEl = document.getElementById('exit-msg');
+  if (role === 'worker' && sess && sess.checkIn && !sess.checkOut) {
+    msgEl.innerHTML = '현재 <b style="color:var(--ok)">근무 중</b>입니다.<br>앱을 종료해도 <b style="color:var(--Y)">근무 시간은 계속 기록</b>됩니다.<br>퇴근 시 다시 접속해서 체크아웃하세요.';
+  } else {
+    msgEl.textContent = '언제든 다시 접속할 수 있습니다.';
+  }
+  om('m-exit');
+  // 히스토리 복구 (다시 뒤로가기 누르면 또 팝업)
+  history.pushState({page:'app'}, '', location.href);
+});
+
+function confirmExit() {
+  exitConfirmed = true;
+  cm('m-exit');
+  // 히스토리 뒤로 이동 → 실제 종료
+  history.go(-2);
+}
+
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('./sw.js').catch(e=>console.warn('SW 등록 실패:',e));
 }
