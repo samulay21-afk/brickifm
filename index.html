@@ -544,14 +544,9 @@ window.onload = async () => {
     cachedSites = sitesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     cachedWorkers = workersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // 로컬 세션 복원 (날짜 다르면 버림)
-    const savedSess = JSON.parse(localStorage.getItem('sess') || 'null');
-    if (savedSess && savedSess.checkIn && !savedSess.checkOut) {
-      const sessDate = savedSess.checkIn.slice(0,10);
-      const today = new Date().toISOString().slice(0,10);
-      if (sessDate === today) { sess = savedSess; }
-      else { localStorage.removeItem('sess'); } // 날짜 다르면 폐기
-    }
+    // (세션 복원은 로그인 후 근로자별로 처리 — initWorker에서)
+    // 구버전 공용 세션 키 정리
+    localStorage.removeItem('sess');
 
     // URL 파라미터로 근로자 자동 선택 (?w=근로자ID)
     const urlParams = new URLSearchParams(window.location.search);
@@ -654,6 +649,7 @@ function logout() {
   if(liveUnsub) { liveUnsub(); liveUnsub=null; }
   role=null; cWorker=null; pinBuf=''; updPD([]); selW=null; loginRole='admin';
   autoLoginWorker=null;
+  sess=null; // 세션 변수 초기화 (다음 로그인 근로자에게 노출 방지)
   // URL 파라미터가 있으면 유지 (재로그인 편의)
   const urlParams = new URLSearchParams(window.location.search);
   const wParam = urlParams.get('w');
@@ -746,7 +742,34 @@ function grabGPS() {
 // ══════════════════════════════════════
 // WORKER HOME
 // ══════════════════════════════════════
-function initWorker() { goTab('wh'); renderWH(); }
+async function initWorker() {
+  goTab('wh');
+  sess = null;
+  // ① Firestore에서 본인(wId)의 활성 세션 조회 — 기기가 바뀌어도 복원됨
+  try {
+    const snap = await C.sessions().where('wId','==',cWorker.id).get();
+    if (!snap.empty) {
+      const today = new Date().toISOString().slice(0,10);
+      // 오늘 세션만 복원, 이전 날짜 세션은 무시(관리자 강제퇴근 대상)
+      const todaySess = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .find(x => x.checkIn && x.checkIn.slice(0,10) === today && !x.checkOut);
+      if (todaySess) {
+        sess = todaySess;
+        localStorage.setItem('sess_' + cWorker.id, JSON.stringify(sess));
+      }
+    }
+  } catch(e) {
+    console.warn('세션 조회 실패, 로컬 백업 사용', e);
+    // ② 오프라인 대비: 근로자별 로컬 백업에서 복원
+    const local = JSON.parse(localStorage.getItem('sess_' + cWorker.id) || 'null');
+    if (local && local.wId === cWorker.id && local.checkIn && !local.checkOut) {
+      const today = new Date().toISOString().slice(0,10);
+      if (local.checkIn.slice(0,10) === today) sess = local;
+    }
+  }
+  renderWH();
+}
 function renderWH() {
   const banner=document.getElementById('wbanner');
   const gbtn=document.getElementById('gbtn');
@@ -807,7 +830,7 @@ async function doCheckIn() {
     tasks:Object.fromEntries(tasks.map((_,i)=>[i,false])),
     taskLabels:tasks, photosB:[], photosA:[], memo:''
   };
-  localStorage.setItem('sess', JSON.stringify(sess));
+  localStorage.setItem('sess_' + cWorker.id, JSON.stringify(sess));
   // Firestore에 활성 세션 기록 (관리자가 실시간 확인 가능)
   try {
     await C.sessions().doc(sess.id).set({ ...sess, status:'active' });
@@ -845,7 +868,7 @@ async function doCheckout() {
     console.warn('checkout sync err', e);
     toast('오프라인 — 나중에 자동 동기화됩니다','wa');
   }
-  localStorage.removeItem('sess'); sess=null;
+  localStorage.removeItem('sess_' + cWorker.id); sess=null;
   cm('m-co');
   toast('체크아웃 완료! 수고하셨습니다 👏','ok');
   renderWH();
@@ -905,7 +928,7 @@ async function onPhoto(e) {
       const url=await ref.getDownloadURL();
       if(!sess[key]) sess[key]=[];
       sess[key].push(url);
-      localStorage.setItem('sess',JSON.stringify(sess));
+      localStorage.setItem('sess_' + cWorker.id, JSON.stringify(sess));
       await C.sessions().doc(sess.id).update({[key]:sess[key]}).catch(()=>{});
       renderPGs();
       toast('사진 업로드 완료 ✅','ok');
@@ -928,7 +951,7 @@ async function rmPhoto(t,i) {
   // Storage에서 삭제 시도
   try { await storage.refFromURL(url).delete(); } catch(e) { console.warn('storage del err',e); }
   sess[key].splice(i,1);
-  localStorage.setItem('sess',JSON.stringify(sess));
+  localStorage.setItem('sess_' + cWorker.id, JSON.stringify(sess));
   await C.sessions().doc(sess.id).update({[key]:sess[key]}).catch(()=>{});
   renderPGs();
 }
