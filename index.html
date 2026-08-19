@@ -71,6 +71,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
 /* ── APP SHELL ── */
 #s-app{background:var(--bg)}
 .ah{background:var(--s1);border-bottom:1px solid var(--border);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.ah-inner{display:flex;align-items:center;justify-content:space-between;width:100%}
 .al{display:flex;align-items:center;gap:8px}
 .ai{width:27px;height:27px;background:var(--Y);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px}
 .at{font-size:14px;font-weight:700}
@@ -92,6 +93,35 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
 .ni{width:31px;height:31px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .2s}
 .nb.hid{display:none}
 .tp{display:none}.tp.on{display:block}
+
+/* ── PC 화면 최적화 ── */
+@media (min-width: 768px) {
+  .sc { padding: 20px 24px; }
+  .sc > .tp { max-width: 900px; margin: 0 auto; }
+  .ah { padding: 12px 24px; }
+  .ah-inner { max-width: 900px; margin: 0 auto; width: 100%; display: flex; align-items: center; justify-content: space-between; }
+  .bn { justify-content: center; }
+  .nb { flex: 0 0 110px; }
+  /* 현황 탭 통계 카드 */
+  .sr4 { gap: 12px; }
+  /* 근태 목록 2단 */
+  #today-att { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #today-att .ai2 { margin-bottom: 0; }
+  /* 기록 목록 2단 */
+  #rec-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #rec-list > div { margin-bottom: 0 !important; }
+  /* 사업장·근로자 2단 */
+  #sites-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  #sites-list .site-card { margin-bottom: 0; }
+  #workers-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #workers-list .wr { margin-bottom: 0; }
+}
+@media (min-width: 1280px) {
+  .sc > .tp { max-width: 1100px; }
+  .ah-inner { max-width: 1100px; }
+  #today-att, #rec-list { grid-template-columns: 1fr 1fr 1fr; }
+  #sites-list, #workers-list { grid-template-columns: 1fr 1fr 1fr; }
+}
 
 /* ── CARDS ── */
 .card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:13px;margin-bottom:11px}
@@ -300,12 +330,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
 <!-- APP -->
 <div class="screen" id="s-app">
   <div class="ah">
+   <div class="ah-inner">
     <div class="al"><div class="ai"><svg viewBox="0 0 40 40" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="10" width="24" height="26" rx="3" fill="#1a2236" stroke="#253047" stroke-width="1.2"/><rect x="14" y="7" width="12" height="5" rx="2.5" fill="#F5C400"/><polyline points="12,19.5 13.5,21.5 16,18" stroke="#2DD4BF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="18" y1="20" x2="27" y2="20" stroke="#253047" stroke-width="1.5" stroke-linecap="round"/><polyline points="12,25.5 13.5,27.5 16,24" stroke="#2DD4BF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="18" y1="26" x2="27" y2="26" stroke="#253047" stroke-width="1.5" stroke-linecap="round"/><polyline points="12,31.5 13.5,33.5 16,30" stroke="#F5C400" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="18" y1="32" x2="27" y2="32" stroke="#253047" stroke-width="1.5" stroke-linecap="round"/></svg></div><div class="at" id="hdr-t">브릭IFM</div></div>
     <div class="ar">
       <div class="sync-dot off" id="sdot" title="Firebase 연결 상태"></div>
       <div class="rb" id="rbadge"></div>
       <button class="lob" onclick="logout()">로그아웃</button>
     </div>
+   </div>
   </div>
   <div class="sc" id="msc">
 
