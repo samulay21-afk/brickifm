@@ -1623,12 +1623,11 @@ function renderWorkers() {
   el.innerHTML=list.map((w,i)=>{
     const s=cachedSites.find(x=>x.id===w.siteId);
     const dutyLabel=w.duty?` · ${w.duty}`:'';
-    return`<div class="wr" style="flex-wrap:wrap">
+    return`<div class="wr">
       <div class="wa2" style="background:${wc(i)}">${ini(w.name)}</div>
       <div class="wi2"><div class="wn2">${w.name}</div><div class="ws2">${s?.name||'사업장 미지정'}${dutyLabel}</div></div>
-      <div style="font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:3px">••••</div>
+      <button class="btn bi bsm" onclick="shareWorkerLink('${w.id}','${w.name}','${w.pin}')" title="링크 보내기">📩</button>
       ${!adminSiteId?`<button class="btn bo bsm" onclick="openWorker('${w.id}')">수정</button><button class="btn bd bsm" onclick="delWorker('${w.id}')">삭제</button>`:''}
-      <button class="btn bi bsm" style="width:100%;margin-top:5px" onclick="shareWorkerLink('${w.id}','${w.name}','${w.pin}')">📩 링크 보내기</button>
     </div>`;
   }).join('');
 }
