@@ -973,11 +973,15 @@ async function doCheckIn() {
   }
   const s=cachedSites.find(x=>x.id===cWorker.siteId);
   if(!s) { toast('소속 사업장 없음. 관리자에게 문의하세요','ng'); return; }
-  // Firestore에 기존 활성 세션 확인
+  // Firestore에 기존 활성 세션 확인 → 있으면 복원 (차단하지 않음)
   try {
     const existing=await C.sessions().where('wId','==',cWorker.id).where('status','==','active').get();
     if(!existing.empty) {
-      toast('이전 근무 기록이 남아있습니다. 관리자에게 문의하세요','wa'); return;
+      const doc=existing.docs[0];
+      sess={id:doc.id,...doc.data()};
+      localStorage.setItem('sess',JSON.stringify(sess));
+      toast('이전 근무가 복원되었습니다','wa');
+      renderWH(); return;
     }
   } catch(e) { /* 오프라인이면 무시하고 진행 */ }
   // GPS 위치 기록 (없으면 null로 기록, 체크인은 허용)
