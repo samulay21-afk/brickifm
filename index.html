@@ -334,6 +334,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
     <div class="al"><div class="ai"><svg viewBox="0 0 40 40" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="10" width="24" height="26" rx="3" fill="#1a2236" stroke="#253047" stroke-width="1.2"/><rect x="14" y="7" width="12" height="5" rx="2.5" fill="#F5C400"/><polyline points="12,19.5 13.5,21.5 16,18" stroke="#2DD4BF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="18" y1="20" x2="27" y2="20" stroke="#253047" stroke-width="1.5" stroke-linecap="round"/><polyline points="12,25.5 13.5,27.5 16,24" stroke="#2DD4BF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="18" y1="26" x2="27" y2="26" stroke="#253047" stroke-width="1.5" stroke-linecap="round"/><polyline points="12,31.5 13.5,33.5 16,30" stroke="#F5C400" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="18" y1="32" x2="27" y2="32" stroke="#253047" stroke-width="1.5" stroke-linecap="round"/></svg></div><div class="at" id="hdr-t">브릭IFM</div></div>
     <div class="ar">
       <div class="sync-dot off" id="sdot" title="Firebase 연결 상태"></div>
+      <button class="lob" onclick="location.reload()" title="새로고침" style="padding:5px 9px">⟳</button>
       <div class="rb" id="rbadge"></div>
       <button class="lob" onclick="logout()">로그아웃</button>
     </div>
@@ -964,7 +965,20 @@ function renderWH() {
   }
   updGBar();
 }
-function gpsAct() { if(!sess||!sess.checkIn) doCheckIn(); else openCO(); }
+let gpsActBusy=false;
+async function gpsAct() {
+  if(gpsActBusy) return;
+  gpsActBusy=true;
+  const btn=document.getElementById('gbtn');
+  if(btn) btn.disabled=true;
+  try {
+    if(!sess||!sess.checkIn) await doCheckIn();
+    else openCO();
+  } finally {
+    gpsActBusy=false;
+    if(btn) btn.disabled=false;
+  }
+}
 
 async function doCheckIn() {
   // 중복 체크인 방지
@@ -1035,7 +1049,11 @@ function openCO() {
   om('m-co');
 }
 
+let checkoutBusy=false;
 async function doCheckout() {
+  if(checkoutBusy) return;
+  checkoutBusy=true;
+  try {
   sess.checkOut=new Date().toISOString();
   sess.checkOutLat=lastGPS?lastGPS.lat:null;
   sess.checkOutLng=lastGPS?lastGPS.lng:null;
@@ -1065,6 +1083,7 @@ async function doCheckout() {
   cm('m-co');
   toast('체크아웃 완료! 수고하셨습니다 👏','ok');
   renderWH();
+  } finally { checkoutBusy=false; }
 }
 // 오프라인 체크아웃 재시도
 async function retryPending() {
@@ -1187,20 +1206,29 @@ async function onPhoto(e) {
   const files=Array.from(e.target.files), key=pTab==='b'?'photosB':'photosA', max=3;
   for(const f of files) {
     if((sess[key]||[]).length>=max){toast(`최대 ${max}장까지 가능합니다`,'wa');break;}
-    try {
-      toast('사진 업로드 중...','wa');
-      const blob=await compressImg(f);
-      const fname=`${sess.id}/${key}_${Date.now()}.jpg`;
-      const ref=storage.ref('photos/'+fname);
-      await ref.put(blob);
-      const url=await ref.getDownloadURL();
-      if(!sess[key])sess[key]=[];
-      sess[key].push(url);
-      localStorage.setItem('sess',JSON.stringify(sess));
-      C.sessions().doc(sess.id).update({[key]:sess[key]}).catch(()=>{});
-      renderPGs();
-      toast('사진 업로드 완료','ok');
-    } catch(err) { toast('사진 업로드 실패','ng'); console.warn(err); }
+    toast('사진 업로드 중...','wa');
+    let uploaded=false;
+    for(let attempt=1;attempt<=2;attempt++){
+      try {
+        const blob=await compressImg(f);
+        const fname=`${sess.id}/${key}_${Date.now()}.jpg`;
+        const ref=storage.ref('photos/'+fname);
+        await ref.put(blob);
+        const url=await ref.getDownloadURL();
+        if(!sess[key])sess[key]=[];
+        sess[key].push(url);
+        localStorage.setItem('sess',JSON.stringify(sess));
+        C.sessions().doc(sess.id).update({[key]:sess[key]}).catch(()=>{});
+        renderPGs();
+        toast('사진 업로드 완료','ok');
+        uploaded=true;
+        break;
+      } catch(err) {
+        console.warn('upload attempt '+attempt, err);
+        if(attempt===1) { toast('재시도 중...','wa'); await new Promise(r=>setTimeout(r,1500)); }
+      }
+    }
+    if(!uploaded) toast('사진 업로드 실패 — 통신 상태 확인 후 다시 시도해주세요','ng');
   }
   e.target.value='';
 }
@@ -1238,7 +1266,9 @@ let cachedLiveSessions=[];
 function startLiveAH() {
   if(liveUnsub) { liveUnsub(); liveUnsub=null; }
   if(liveSessionsUnsub) { liveSessionsUnsub(); liveSessionsUnsub=null; }
-  liveUnsub = C.records()
+  // 오늘 기록만 구독 (전체 구독 시 데이터 증가에 따라 성능·비용 문제)
+  const todayStr=new Date().toISOString().slice(0,10);
+  liveUnsub = C.records().where('checkIn','>=',todayStr)
     .onSnapshot(snap=>{
       cachedRecords = snap.docs.map(d=>({id:d.id,...d.data()}));
       renderAH();
