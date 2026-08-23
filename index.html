@@ -559,6 +559,19 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
   <img id="photo-view" src="" style="max-width:92vw;max-height:88vh;border-radius:8px;object-fit:contain">
 </div></div>
 
+<!-- 앱 종료 확인 -->
+<div class="mo moc" id="m-exit"><div class="md">
+  <div class="mh"><div class="mt2">앱을 종료하시겠어요?</div><button class="mcl" onclick="cm('m-exit')">✕</button></div>
+  <div class="mb" style="text-align:center">
+    <div style="font-size:42px;margin:8px 0 12px">👋</div>
+    <div style="font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:18px" id="exit-msg"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn bo bfw" onclick="cm('m-exit')">계속 사용</button>
+      <button class="btn bd bfw" onclick="confirmExit()">종료하기</button>
+    </div>
+  </div>
+</div></div>
+
 <script>
 'use strict';
 
@@ -1804,6 +1817,56 @@ function cm(id){document.getElementById(id).classList.remove('on');}
 document.querySelectorAll('.mo').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('on');}));
 function toast(msg,t=''){const e=document.getElementById('toast');e.textContent=msg;e.className='toast on'+(t?` ${t}2`:'');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),2800);}
 function pinHelp(){alert('기본 관리자 PIN: 0000\n근로자 PIN은 관리자가 설정합니다.');}
+
+// ══════════════════════════════════════
+// 뒤로가기 종료 방지
+// ══════════════════════════════════════
+let exitConfirmed = false;
+
+function armBackGuard() {
+  history.pushState({guard:1}, '');
+  history.pushState({guard:2}, '');
+}
+armBackGuard();
+
+window.addEventListener('popstate', () => {
+  if (exitConfirmed) return;
+
+  // 모달이 열려있으면 모달만 닫기
+  const openModal = document.querySelector('.mo.on');
+  if (openModal && openModal.id !== 'm-exit') {
+    openModal.classList.remove('on');
+    history.pushState({guard:2}, '');
+    return;
+  }
+
+  // 종료 확인 팝업 이미 열려있으면 유지
+  if (document.getElementById('m-exit').classList.contains('on')) {
+    history.pushState({guard:2}, '');
+    return;
+  }
+
+  const msgEl = document.getElementById('exit-msg');
+  if (msgEl) {
+    if (role === 'worker' && sess && sess.checkIn && !sess.checkOut) {
+      msgEl.innerHTML = '현재 <b style="color:var(--ok)">근무 중</b>입니다.<br>앱을 종료해도 <b style="color:var(--Y)">근무 시간은 계속 기록</b>됩니다.<br>퇴근 시 다시 접속해서 체크아웃하세요.';
+    } else {
+      msgEl.textContent = '언제든 다시 접속할 수 있습니다.';
+    }
+  }
+  om('m-exit');
+  history.pushState({guard:2}, '');
+});
+
+function confirmExit() {
+  exitConfirmed = true;
+  cm('m-exit');
+  history.go(-3);
+  // 브라우저가 못 닫으면 빈 화면 표시
+  setTimeout(() => {
+    document.body.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#0A0E1A;color:#6B7FA8;font-family:sans-serif"><div style="font-size:36px;margin-bottom:12px">👋</div><div style="font-size:14px">앱이 종료되었습니다</div><div style="font-size:12px;margin-top:8px">이 탭을 닫아주세요</div></div>';
+  }, 400);
+}
 
 // ══════════════════════════════════════
 // PWA
