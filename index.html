@@ -915,17 +915,41 @@ function grabGPS() {
 // ══════════════════════════════════════
 async function initWorker() {
   if(sess && sess.wId !== cWorker.id) { sess = null; }
-  // localStorage에 세션 없으면 Firestore에서 복원 시도
-  if(!sess || !sess.checkIn || sess.checkOut) {
-    try {
-      const snap=await C.sessions().where('wId','==',cWorker.id).where('status','==','active').get();
-      if(!snap.empty) {
-        const doc=snap.docs[0];
-        sess={id:doc.id,...doc.data()};
-        localStorage.setItem('sess',JSON.stringify(sess));
+  // 로딩 표시 (판정 전에 "체크인 전"이 잘못 보이는 것 방지)
+  const banner=document.getElementById('wbanner');
+  if(banner) banner.innerHTML='<div class="sb sb-idle"><div class="sbi">⏳</div><div class="sbx"><div class="sbt">근무 상태 확인 중...</div><div class="sbs">잠시만 기다려주세요</div></div></div>';
+  goTab('wh');
+
+  // ── Firestore를 기준으로 상태 판정 (단일 필드 쿼리 — 인덱스 불필요) ──
+  let fsOk=false, fsActive=null;
+  try {
+    const snap=await C.sessions().where('wId','==',cWorker.id).get();
+    fsOk=true;
+    fsActive=snap.docs.map(d=>({id:d.id,...d.data()}))
+      .find(s=>s.status==='active'&&s.checkIn&&!s.checkOut)||null;
+  } catch(e) { console.warn('세션 조회 실패(오프라인?)', e); }
+
+  if(fsOk) {
+    if(fsActive) {
+      // 서버에 근무 중 기록 있음 → 이것이 진실
+      sess={...fsActive, synced:true};
+      localStorage.setItem('sess',JSON.stringify(sess));
+    } else if(sess && sess.checkIn && !sess.checkOut) {
+      if(sess.synced) {
+        // 서버에 있었는데 지금 없음 = 다른 곳에서 체크아웃/관리자 처리됨 → 로컬 정리
+        localStorage.removeItem('sess'); sess=null;
+      } else {
+        // 오프라인 체크인이 아직 서버에 못 감 → 지금 동기화
+        try {
+          await C.sessions().doc(sess.id).set({...sess,status:'active'});
+          sess.synced=true;
+          localStorage.setItem('sess',JSON.stringify(sess));
+        } catch(e) { console.warn('세션 동기화 재시도 실패', e); }
       }
-    } catch(e) { /* 오프라인이면 무시 */ }
+    }
   }
+  // fsOk=false(오프라인)면 localStorage 그대로 신뢰
+
   // 24시간 초과 세션 자동 정리
   if(sess && sess.checkIn && !sess.checkOut) {
     const age=Date.now()-new Date(sess.checkIn).getTime();
@@ -937,7 +961,7 @@ async function initWorker() {
       toast('이전 근무가 24시간 초과로 자동 마감되었습니다','wa');
     }
   }
-  goTab('wh'); renderWH(); retryPending();
+  renderWH(); retryPending();
 }
 let whTimer=null;
 function renderWH() {
@@ -958,7 +982,7 @@ function renderWH() {
       banner.innerHTML=`<div class="sb sb-in"><div class="sbi">✅</div><div class="sbx"><div class="sbt">${s?.name||'현장'} 근무 중${sess.duty?' · '+sess.duty:''}</div><div class="sbs">${dateStr}</div><div class="sbtime">체크인 ${fmtT(sess.checkIn)} · 경과 ${elapsed(sess.checkIn)}</div></div></div>`;
     };
     updBanner();
-    whTimer=setInterval(updBanner,30000);
+    whTimer=setInterval(()=>{updBanner();retryPending();},30000);
     gbtn.className='gb gb-out'; document.getElementById('gbico').textContent='🏁'; document.getElementById('gbtxt').textContent='GPS 체크아웃';
     gbtn.disabled=false; tsec.style.display='block';
     renderTasks(); renderPGs();
@@ -989,10 +1013,10 @@ async function doCheckIn() {
   if(!s) { toast('소속 사업장 없음. 관리자에게 문의하세요','ng'); return; }
   // Firestore에 기존 활성 세션 확인 → 있으면 복원 (차단하지 않음)
   try {
-    const existing=await C.sessions().where('wId','==',cWorker.id).where('status','==','active').get();
-    if(!existing.empty) {
-      const doc=existing.docs[0];
-      sess={id:doc.id,...doc.data()};
+    const existing=await C.sessions().where('wId','==',cWorker.id).get();
+    const act=existing.docs.map(d=>({id:d.id,...d.data()})).find(x=>x.status==='active'&&x.checkIn&&!x.checkOut);
+    if(act) {
+      sess={...act, synced:true};
       localStorage.setItem('sess',JSON.stringify(sess));
       toast('이전 근무가 복원되었습니다','wa');
       renderWH(); return;
@@ -1029,12 +1053,17 @@ async function doCheckIn() {
     gpsStatus: hasGPS ? (outOfRange ? 'out' : 'ok') : 'none',
     checkInDist: checkInDist,
     tasks:Object.fromEntries(tasks.map((_,i)=>[i,false])),
-    taskLabels:tasks, photosB:[], photosA:[], memo:''
+    taskLabels:tasks, photosB:[], photosA:[], memo:'', synced:false
   };
   localStorage.setItem('sess', JSON.stringify(sess));
   try {
     await C.sessions().doc(sess.id).set({ ...sess, status:'active' });
-  } catch(e) { console.warn('session sync err', e); }
+    sess.synced=true;
+    localStorage.setItem('sess', JSON.stringify(sess));
+  } catch(e) {
+    console.warn('session sync err', e);
+    toast('서버 저장 대기 중 — 통신 연결 시 자동 저장됩니다','wa');
+  }
   // 상태별 토스트 메시지
   if(!hasGPS) toast(`${s.name} 체크인 완료 (GPS 미확인)`,'wa');
   else if(outOfRange) toast(`${s.name} 체크인 완료 ⚠️ 현장 밖 위치`,'wa');
@@ -1087,6 +1116,15 @@ async function doCheckout() {
 }
 // 오프라인 체크아웃 재시도
 async function retryPending() {
+  // 미동기화 체크인 세션 재시도
+  if(sess && sess.checkIn && !sess.checkOut && !sess.synced) {
+    try {
+      await C.sessions().doc(sess.id).set({...sess, status:'active'});
+      sess.synced=true;
+      localStorage.setItem('sess',JSON.stringify(sess));
+    } catch(e) { /* 다음 기회에 재시도 */ }
+  }
+  // 미전송 체크아웃 재시도
   const pending=JSON.parse(localStorage.getItem('pendingCheckouts')||'[]');
   if(!pending.length) return;
   const remain=[];
