@@ -814,12 +814,30 @@ function enterApp() {
   try {
     showScreen('s-app');
     applyRole();
-    if(role==='admin') initAdmin();
+    if(role==='admin') {
+      initAdmin();
+      // 협력사: 조회 + 직접 체크인/아웃 (기기별 세션)
+      if(partnerScope) {
+        setupPartnerWorker();
+        initWorker().catch(e=>console.warn('initWorker err',e));
+      }
+    }
     else initWorker().catch(e=>console.warn('initWorker err',e));
   } catch(e) {
     console.warn('enterApp err', e);
     showScreen('s-login');
   }
+}
+// 협력사 로그인 시 체크인용 가상 근로자 구성 (기기별 ID로 동시 2인 체크인 지원)
+function setupPartnerWorker() {
+  let did=localStorage.getItem('deviceId');
+  if(!did){ did='D'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); localStorage.setItem('deviceId',did); }
+  cWorker={
+    id:'P'+partnerScope.id+'_'+did,
+    name:partnerScope.name,
+    siteIds:partnerScope.siteIds||[],
+    duty:'', isPartner:true, partnerId:partnerScope.id
+  };
 }
 function logout() {
   if(liveUnsub) { liveUnsub(); liveUnsub=null; }
@@ -839,11 +857,11 @@ function applyRole() {
   const rb=document.getElementById('rbadge');
   if(role==='admin') {
     if(partnerScope) {
-      // 협력사 관리자 (담당 사업장 묶음)
+      // 협력사 (체크인 + 담당 현장 조회)
       rb.textContent=`🤝 ${partnerScope.name}`; rb.className='rb rba';
       document.getElementById('hdr-t').textContent=partnerScope.name;
-      ['ah','ar'].forEach(n=>document.getElementById('bn-'+n).classList.remove('hid'));
-      ['as','aw','aset','wh','wr'].forEach(n=>document.getElementById('bn-'+n).classList.add('hid'));
+      ['wh','wr','ah','ar'].forEach(n=>document.getElementById('bn-'+n).classList.remove('hid'));
+      ['as','aw','aset'].forEach(n=>document.getElementById('bn-'+n).classList.add('hid'));
       document.getElementById('btn-add-worker').style.display='none';
     } else if(adminSiteId) {
       // 사업장 관리자
@@ -886,6 +904,7 @@ function goTab(t) {
   if(t==='ah') { setupASel(); startLiveAH(); }
   else { if(liveUnsub&&t!=='ah') { liveUnsub(); liveUnsub=null; } if(liveSessionsUnsub&&t!=='ah') { liveSessionsUnsub(); liveSessionsUnsub=null; } }
   if(t==='ar') { setupRF(); renderRec(); }
+  if(t==='wh'&&cWorker) renderWH();
   if(t==='wr') renderWorkerRec();
   if(t==='as') renderSites();
   if(t==='aw') renderWorkers();
@@ -1048,7 +1067,7 @@ function renderWH() {
   const tsec=document.getElementById('tsec');
   if(!banner||!gbtn||!tsec) return; // DOM 미준비 시 안전 종료
   // 헤더: 근무 중인 사업장명 반영 (다중 소속 대응)
-  if(role==='worker'&&cWorker){
+  if(cWorker&&(role==='worker'||cWorker.isPartner)){
     const hdr=document.getElementById('hdr-t');
     if(hdr){
       const ids=getWorkerSites(cWorker);
@@ -1147,7 +1166,8 @@ async function doCheckIn(pickedSiteId=null) {
     gpsStatus: hasGPS ? (outOfRange ? 'out' : 'ok') : 'none',
     checkInDist: checkInDist,
     tasks:Object.fromEntries(tasks.map((_,i)=>[i,false])),
-    taskLabels:tasks, photosB:[], photosA:[], memo:'', synced:false
+    taskLabels:tasks, photosB:[], photosA:[], memo:'', synced:false,
+    partnerId: cWorker.partnerId||null
   };
   localStorage.setItem('sess', JSON.stringify(sess));
   try {
@@ -1282,8 +1302,10 @@ async function renderWorkerRec() {
   try {
     const d7=new Date(); d7.setDate(d7.getDate()-7);
     const from=d7.toISOString().slice(0,10);
-    // 인덱스 불필요: wId로만 필터 → JS에서 날짜 필터
-    const snap=await C.records().where('wId','==',cWorker.id).get();
+    // 인덱스 불필요: 단일 필드 쿼리 → JS에서 날짜 필터
+    const snap = cWorker.isPartner
+      ? await C.records().where('partnerId','==',cWorker.partnerId).get()
+      : await C.records().where('wId','==',cWorker.id).get();
     let recs=snap.docs.map(d=>({id:d.id,...d.data()}));
     recs=recs.filter(r=>r.checkIn&&r.checkIn.slice(0,10)>=from);
     recs.sort((a,b)=>(b.checkIn||'').localeCompare(a.checkIn||''));
@@ -1571,7 +1593,10 @@ function setupRF() {
   if(wf) {
     const curW=wf.value;
     const wlist=(adminSiteId||partnerScope)?cachedWorkers.filter(w=>getWorkerSites(w).some(id=>inAdminScope(id))):cachedWorkers;
-    wf.innerHTML='<option value="">전체 근로자</option>'+wlist.map(w=>`<option value="${w.id}"${w.id===curW?' selected':''}>${w.name}</option>`).join('');
+    const plist=partnerScope?cachedPartners.filter(p=>p.id===partnerScope.id):cachedPartners.filter(p=>(p.siteIds||[]).some(id=>inAdminScope(id)));
+    wf.innerHTML='<option value="">전체 근로자</option>'
+      +plist.map(p=>`<option value="partner:${p.id}"${('partner:'+p.id)===curW?' selected':''}>🤝 ${p.name}</option>`).join('')
+      +wlist.map(w=>`<option value="${w.id}"${w.id===curW?' selected':''}>${w.name}</option>`).join('');
   }
   if(!document.getElementById('rf-from').value) {
     document.getElementById('rf-from').value=new Date().toISOString().slice(0,10);
@@ -1594,7 +1619,10 @@ async function renderRec() {
     if(to) recs=recs.filter(r=>r.checkIn&&r.checkIn.slice(0,10)<=to);
     recs=recs.filter(r=>inAdminScope(r.siteId));
     if(sf) recs=recs.filter(r=>r.siteId===sf);
-    if(wfv) recs=recs.filter(r=>r.wId===wfv);
+    if(wfv) {
+      if(wfv.startsWith('partner:')) { const pid=wfv.slice(8); recs=recs.filter(r=>r.partnerId===pid); }
+      else recs=recs.filter(r=>r.wId===wfv);
+    }
     recs=recs.slice(0,100);
     // 요약 통계
     if(recs.length) {
