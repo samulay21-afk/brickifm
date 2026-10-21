@@ -1,4 +1,4 @@
-const CACHE_NAME = 'brickifm-v16';
+const CACHE_NAME = 'brickifm-v18';
 const ASSETS = [
   './',
   './index.html',
@@ -31,8 +31,8 @@ self.addEventListener('fetch', (e) => {
   // http/https만 처리 (chrome-extension 등 제외)
   if (!e.request.url.startsWith('http')) return;
   // Firebase 등 API 요청은 캐시하지 않고 네트워크로
-  if (e.request.url.includes('firestore') || 
-      e.request.url.includes('googleapis') || 
+  if (e.request.url.includes('firestore') ||
+      e.request.url.includes('googleapis') ||
       e.request.url.includes('firebasestorage') ||
       e.request.url.includes('gstatic')) {
     return;
@@ -41,7 +41,6 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        // 성공하면 캐시 업데이트
         if (res.ok && e.request.method === 'GET') {
           const clone = res.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
@@ -49,7 +48,6 @@ self.addEventListener('fetch', (e) => {
         return res;
       })
       .catch(() => {
-        // 오프라인이면 캐시에서
         return caches.match(e.request);
       })
   );
