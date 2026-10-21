@@ -390,6 +390,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
     <div class="tp" id="tp-ar">
       <div style="display:flex;gap:7px;margin-bottom:7px">
         <select class="fs" id="rf-site" onchange="renderRec()" style="flex:1"><option value="">전체 사업장</option></select>
+        <select class="fs" id="rf-worker" onchange="renderRec()" style="flex:1"><option value="">전체 근로자</option></select>
       </div>
       <div style="display:flex;gap:7px;margin-bottom:11px;align-items:center">
         <input type="date" class="fi" id="rf-from" onchange="renderRec()" style="flex:1">
@@ -431,6 +432,15 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
           <input class="fi" id="np2" type="password" placeholder="확인" maxlength="4" style="width:88px">
           <button class="btn bp bsm" onclick="chgPin()">변경</button>
         </div>
+      </div>
+      <div class="card">
+        <div class="ct">협력사 관리 <span style="font-size:10px;letter-spacing:0;color:var(--muted)">(용역 업체 전용 조회 계정)</span></div>
+        <div id="partners-list" style="margin-bottom:9px"></div>
+        <div style="display:flex;gap:7px">
+          <button class="btn bp bsm" style="flex:1" onclick="openPartner()">+ 협력사 추가</button>
+          <button class="btn bo bsm" style="flex:1" onclick="seedJustcare()">⚡ 저스트케어 기본 세팅</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6">협력사 PIN으로 로그인하면 담당 사업장의 현황·기록만 조회됩니다</div>
       </div>
       <div class="card">
         <div class="ct">데이터 내보내기</div>
@@ -508,7 +518,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
   <div class="mh"><div class="mt2" id="w-mt">근로자 추가</div><button class="mcl" onclick="cm('m-worker')">✕</button></div>
   <div class="mb">
     <div class="fg"><label class="fl">이름 *</label><input class="fi" id="w-name" placeholder="예: 김청소"></div>
-    <div class="fg"><label class="fl">소속 사업장</label><select class="fs" id="w-site" onchange="updateDutySelect()"><option value="">미지정</option></select></div>
+    <div class="fg"><label class="fl">소속 사업장 (복수 선택 가능)</label><div id="w-sites" style="display:flex;flex-direction:column;gap:5px;max-height:180px;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:var(--r3);padding:8px"></div></div>
     <div class="fg"><label class="fl">담당 직무</label><select class="fs" id="w-duty"><option value="">전체 (기본)</option></select></div>
     <div class="fg"><label class="fl">개인 PIN (4자리) *</label><input class="fi" id="w-pin" type="password" placeholder="0000" maxlength="4"></div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:11px">각 근로자는 개인 PIN으로 로그인합니다</div>
@@ -539,6 +549,26 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex
       <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:12px">설정 변경 후 이 페이지를 새로고침 해주세요</div>
     </div>
     <button class="btn bo bfw" onclick="cm('m-gps')">확인</button>
+  </div>
+</div></div>
+
+<!-- 협력사 추가/수정 -->
+<div class="mo moc" id="m-partner"><div class="md">
+  <div class="mh"><div class="mt2" id="p-mt">협력사 추가</div><button class="mcl" onclick="cm('m-partner')">✕</button></div>
+  <div class="mb">
+    <div class="fg"><label class="fl">협력사명 *</label><input class="fi" id="p-name" placeholder="예: 저스트케어"></div>
+    <div class="fg"><label class="fl">담당 사업장 (복수 선택)</label><div id="p-sites" style="display:flex;flex-direction:column;gap:5px;max-height:200px;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:var(--r3);padding:8px"></div></div>
+    <div class="fg"><label class="fl">협력사 관리자 PIN (4자리) *</label><input class="fi" id="p-pin" type="password" placeholder="0000" maxlength="4"></div>
+    <input type="hidden" id="p-eid">
+    <button class="btn bp bfw" onclick="savePartner()">저장</button>
+  </div>
+</div></div>
+
+<!-- 체크인 사업장 선택 (다중 소속 근로자) -->
+<div class="mo moc" id="m-pick"><div class="md">
+  <div class="mh"><div class="mt2">어느 현장에 체크인할까요?</div><button class="mcl" onclick="cm('m-pick')">✕</button></div>
+  <div class="mb">
+    <div id="pick-list" style="display:flex;flex-direction:column;gap:8px"></div>
   </div>
 </div></div>
 
@@ -599,6 +629,7 @@ const C = {
   workers:   () => db.collection('workers'),
   records:   () => db.collection('workRecords'),
   sessions:  () => db.collection('activeSessions'),
+  partners:  () => db.collection('partners'),
 };
 
 // ══════════════════════════════════════
@@ -612,7 +643,20 @@ let role=null, cWorker=null, loginRole='admin', selW=null, pinBuf='';
 let sess=null, pTab='b', lastGPS=null;
 let adminPin='0000';
 let adminSiteId=null; // null=슈퍼관리자, siteId=사업장 관리자
-let cachedSites=[], cachedWorkers=[], cachedRecords=[];
+let partnerScope=null; // 협력사 관리자: {id, name, siteIds:[]}
+let cachedSites=[], cachedWorkers=[], cachedRecords=[], cachedPartners=[];
+
+// 관리자 조회 범위 판정 (슈퍼=전체, 사업장=1곳, 협력사=담당 묶음)
+function inAdminScope(siteId) {
+  if(partnerScope) return partnerScope.siteIds.includes(siteId);
+  if(adminSiteId) return siteId===adminSiteId;
+  return true;
+}
+function adminScopeSites() {
+  if(partnerScope) return cachedSites.filter(s=>partnerScope.siteIds.includes(s.id));
+  if(adminSiteId) return cachedSites.filter(s=>s.id===adminSiteId);
+  return cachedSites;
+}
 let liveUnsub=null; // firestore live listener
 
 // ══════════════════════════════════════
@@ -630,12 +674,14 @@ window.onload = async () => {
       await C.config().doc('settings').set({ adminPin: '0000' });
     }
     // load sites & workers for login screen
-    const [sitesSnap, workersSnap] = await Promise.all([
+    const [sitesSnap, workersSnap, partnersSnap] = await Promise.all([
       C.sites().orderBy('name').get(),
       C.workers().orderBy('name').get(),
+      C.partners().get().catch(()=>({docs:[]})),
     ]);
     cachedSites = sitesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     cachedWorkers = workersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    cachedPartners = partnersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     // restore local session
     const savedSess = JSON.parse(localStorage.getItem('sess') || 'null');
@@ -687,8 +733,9 @@ function showLoginForWorker(w) {
   selRole('worker');
   selWorker(w.id);
   document.getElementById('wsec').style.display = 'none';
-  const site = cachedSites.find(x => x.id === w.siteId);
-  document.getElementById('plbl').innerHTML = `<div style="font-size:15px;font-weight:700;margin-bottom:4px">${w.name}</div><div style="font-size:11px;color:var(--muted);margin-bottom:8px">${site?.name || ''}</div>PIN 입력`;
+  const wSites = getWorkerSites(w).map(id=>cachedSites.find(x=>x.id===id)?.name).filter(n=>n);
+  const siteLabel = wSites.length>1 ? `${wSites[0]} 외 ${wSites.length-1}곳` : (wSites[0]||'');
+  document.getElementById('plbl').innerHTML = `<div style="font-size:15px;font-weight:700;margin-bottom:4px">${w.name}</div><div style="font-size:11px;color:var(--muted);margin-bottom:8px">${siteLabel}</div>PIN 입력`;
 }
 
 function setSyncDot(state) {
@@ -717,10 +764,11 @@ function renderWList() {
   const list = directWorkerId ? cachedWorkers.filter(w=>w.id===directWorkerId) : cachedWorkers;
   if(!list.length) { el.innerHTML='<div style="text-align:center;padding:9px;color:var(--muted);font-size:12px">등록된 근로자 없음<br>관리자에게 문의하세요</div>'; return; }
   el.innerHTML=list.map((w,i)=>{
-    const s=cachedSites.find(x=>x.id===w.siteId);
+    const names=getWorkerSites(w).map(id=>cachedSites.find(x=>x.id===id)?.name).filter(n=>n);
+    const label=names.length>1?`${names[0]} 외 ${names.length-1}곳`:(names[0]||'사업장 미지정');
     return`<div class="wi ${selW?.id===w.id?'on':''}" onclick="selWorker('${w.id}')">
       <div class="wav" style="background:${wc(i)}">${ini(w.name)}</div>
-      <div><div class="wn">${w.name}</div><div class="ws" style="font-size:11px;color:var(--muted)">${s?.name||'사업장 미지정'}</div></div>
+      <div><div class="wn">${w.name}</div><div class="ws" style="font-size:11px;color:var(--muted)">${label}</div></div>
     </div>`;
   }).join('');
 }
@@ -743,10 +791,13 @@ function updPD(d) {
 function tryLogin() {
   if(loginRole==='admin') {
     // 1) 슈퍼 관리자 PIN 확인
-    if(pinBuf===adminPin) { role='admin'; adminSiteId=null; enterApp(); return; }
+    if(pinBuf===adminPin) { role='admin'; adminSiteId=null; partnerScope=null; enterApp(); return; }
     // 2) 사업장 관리자 PIN 확인
     const siteMatch=cachedSites.find(s=>s.adminPin&&s.adminPin===pinBuf);
-    if(siteMatch) { role='admin'; adminSiteId=siteMatch.id; enterApp(); return; }
+    if(siteMatch) { role='admin'; adminSiteId=siteMatch.id; partnerScope=null; enterApp(); return; }
+    // 3) 협력사 관리자 PIN 확인
+    const pMatch=cachedPartners.find(p=>p.pin&&p.pin===pinBuf);
+    if(pMatch) { role='admin'; adminSiteId=null; partnerScope={id:pMatch.id,name:pMatch.name,siteIds:pMatch.siteIds||[]}; enterApp(); return; }
     loginErr();
   } else {
     if(!selW) { toast('근로자를 먼저 선택하세요','wa'); pinBuf=''; updPD([]); return; }
@@ -774,7 +825,7 @@ function logout() {
   if(liveUnsub) { liveUnsub(); liveUnsub=null; }
   if(liveSessionsUnsub) { liveSessionsUnsub(); liveSessionsUnsub=null; }
   if(whTimer) { clearInterval(whTimer); whTimer=null; }
-  role=null; cWorker=null; pinBuf=''; updPD([]); selW=null; loginRole='admin'; adminSiteId=null;
+  role=null; cWorker=null; pinBuf=''; updPD([]); selW=null; loginRole='admin'; adminSiteId=null; partnerScope=null;
   localStorage.removeItem('lastWorker');
   // 개인 링크 상태면 역할 탭 복원
   if(directWorkerId) { document.querySelector('.rtabs').style.display=''; directWorkerId=null; }
@@ -787,7 +838,14 @@ function logout() {
 function applyRole() {
   const rb=document.getElementById('rbadge');
   if(role==='admin') {
-    if(adminSiteId) {
+    if(partnerScope) {
+      // 협력사 관리자 (담당 사업장 묶음)
+      rb.textContent=`🤝 ${partnerScope.name}`; rb.className='rb rba';
+      document.getElementById('hdr-t').textContent=partnerScope.name;
+      ['ah','ar'].forEach(n=>document.getElementById('bn-'+n).classList.remove('hid'));
+      ['as','aw','aset','wh','wr'].forEach(n=>document.getElementById('bn-'+n).classList.add('hid'));
+      document.getElementById('btn-add-worker').style.display='none';
+    } else if(adminSiteId) {
       // 사업장 관리자
       const site=cachedSites.find(s=>s.id===adminSiteId);
       rb.textContent=`👔 ${site?.name||'사업장'} 관리자`; rb.className='rb rba';
@@ -805,8 +863,12 @@ function applyRole() {
     }
   } else {
     rb.textContent=`🦺 ${cWorker.name}`; rb.className='rb rbw';
-    const s=cachedSites.find(x=>x.id===cWorker.siteId);
-    document.getElementById('hdr-t').textContent=s?.name||'현장 근무';
+    // 근무 중이면 해당 사업장명, 아니면 단일 소속 시 그 사업장명, 다중이면 '현장 근무'
+    const wSiteIds=getWorkerSites(cWorker);
+    let hdrName='현장 근무';
+    if(sess && sess.checkIn && !sess.checkOut && sess.siteName) hdrName=sess.siteName;
+    else if(wSiteIds.length===1) hdrName=cachedSites.find(x=>x.id===wSiteIds[0])?.name||'현장 근무';
+    document.getElementById('hdr-t').textContent=hdrName;
     ['wh','wr'].forEach(n=>document.getElementById('bn-'+n).classList.remove('hid'));
     ['ah','ar','as','aw','aset'].forEach(n=>document.getElementById('bn-'+n).classList.add('hid'));
   }
@@ -828,6 +890,7 @@ function goTab(t) {
   if(t==='as') renderSites();
   if(t==='aw') renderWorkers();
   if(t==='aset') {
+    renderPartners();
     const rs=document.getElementById('report-site');
     if(rs) rs.innerHTML='<option value="">전체 사업장</option>'+cachedSites.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
     if(!document.getElementById('report-month').value) {
@@ -867,8 +930,15 @@ function updGBar() {
     }
     return;
   }
-  // 사업장 거리 계산
-  const s = cWorker ? cachedSites.find(x=>x.id===cWorker.siteId) : null;
+  // 사업장 거리 계산 — 근무 중이면 그 사업장, 아니면 소속 중 가장 가까운 곳
+  let s=null;
+  if(sess && sess.checkIn && !sess.checkOut && sess.siteId) {
+    s=cachedSites.find(x=>x.id===sess.siteId)||null;
+  } else if(cWorker) {
+    const cands=getWorkerSites(cWorker).map(id=>cachedSites.find(x=>x.id===id)).filter(x=>x&&x.lat&&x.lng);
+    cands.sort((a,b)=>hav(lastGPS.lat,lastGPS.lng,+a.lat,+a.lng)-hav(lastGPS.lat,lastGPS.lng,+b.lat,+b.lng));
+    s=cands[0]||null;
+  }
   if(s && s.lat && s.lng) {
     const dist = Math.round(hav(lastGPS.lat, lastGPS.lng, +s.lat, +s.lng));
     const limit = +(s.rad||100);
@@ -889,6 +959,13 @@ function showGPSGuide() {
   document.getElementById('gps-emsg').textContent='위치 권한이 꺼져있어 GPS 위치를 확인할 수 없습니다. 아래 안내를 따라 위치 권한을 켜주세요.';
   document.getElementById('gps-guide').style.display='block';
   om('m-gps');
+}
+// 근로자 소속 사업장 목록 (다중 소속 지원, 하위 호환)
+function getWorkerSites(w) {
+  if(!w) return [];
+  if(Array.isArray(w.siteIds) && w.siteIds.length) return w.siteIds.filter(id=>cachedSites.some(s=>s.id===id));
+  if(w.siteId) return cachedSites.some(s=>s.id===w.siteId)?[w.siteId]:[];
+  return [];
 }
 function hav(la1,lo1,la2,lo2) {
   const R=6371000,f1=la1*Math.PI/180,f2=la2*Math.PI/180,df=(la2-la1)*Math.PI/180,dl=(lo2-lo1)*Math.PI/180;
@@ -970,6 +1047,15 @@ function renderWH() {
   const gbtn=document.getElementById('gbtn');
   const tsec=document.getElementById('tsec');
   if(!banner||!gbtn||!tsec) return; // DOM 미준비 시 안전 종료
+  // 헤더: 근무 중인 사업장명 반영 (다중 소속 대응)
+  if(role==='worker'&&cWorker){
+    const hdr=document.getElementById('hdr-t');
+    if(hdr){
+      const ids=getWorkerSites(cWorker);
+      if(sess&&sess.checkIn&&!sess.checkOut&&sess.siteName) hdr.textContent=sess.siteName;
+      else hdr.textContent=ids.length===1?(cachedSites.find(x=>x.id===ids[0])?.name||'현장 근무'):'현장 근무';
+    }
+  }
   if(!sess||!sess.checkIn) {
     banner.innerHTML=`<div class="sb sb-idle"><div class="sbi">🌙</div><div class="sbx"><div class="sbt">아직 체크인 전이에요</div><div class="sbs">현장 도착 후 GPS 체크인을 눌러주세요</div></div></div>`;
     gbtn.className='gb gb-in'; document.getElementById('gbico').textContent='📍'; document.getElementById('gbtxt').textContent='GPS 체크인';
@@ -1004,13 +1090,21 @@ async function gpsAct() {
   }
 }
 
-async function doCheckIn() {
+async function doCheckIn(pickedSiteId=null) {
   // 중복 체크인 방지
   if(sess && sess.checkIn && !sess.checkOut) {
     toast('이미 체크인된 상태입니다','wa'); return;
   }
-  const s=cachedSites.find(x=>x.id===cWorker.siteId);
-  if(!s) { toast('소속 사업장 없음. 관리자에게 문의하세요','ng'); return; }
+  const mySites=getWorkerSites(cWorker);
+  if(!mySites.length) { toast('소속 사업장 없음. 관리자에게 문의하세요','ng'); return; }
+  // 다중 소속 + 사업장 미지정 → 선택 모달
+  if(!pickedSiteId && mySites.length>1) {
+    showSitePicker(mySites);
+    return;
+  }
+  const targetId=pickedSiteId||mySites[0];
+  const s=cachedSites.find(x=>x.id===targetId);
+  if(!s) { toast('사업장 정보를 찾을 수 없습니다','ng'); return; }
   // Firestore에 기존 활성 세션 확인 → 있으면 복원 (차단하지 않음)
   try {
     const existing=await C.sessions().where('wId','==',cWorker.id).get();
@@ -1069,6 +1163,32 @@ async function doCheckIn() {
   else if(outOfRange) toast(`${s.name} 체크인 완료 ⚠️ 현장 밖 위치`,'wa');
   else toast(`${s.name} 체크인 완료 ✅`,'ok');
   renderWH();
+}
+
+// 체크인 사업장 선택 모달 (가까운 순 정렬, 선택은 수동)
+function showSitePicker(siteIds) {
+  const items=siteIds.map(id=>{
+    const s=cachedSites.find(x=>x.id===id);
+    if(!s) return null;
+    let dist=null;
+    if(lastGPS && s.lat && s.lng) dist=Math.round(hav(lastGPS.lat,lastGPS.lng,+s.lat,+s.lng));
+    return {s, dist};
+  }).filter(x=>x);
+  // 거리 있는 것 우선, 가까운 순
+  items.sort((a,b)=>(a.dist??1e12)-(b.dist??1e12));
+  document.getElementById('pick-list').innerHTML=items.map(({s,dist})=>{
+    const near=dist!==null && dist<=+(s.rad||100);
+    const distTxt=dist===null?'거리 미확인':(dist>=1000?(dist/1000).toFixed(1)+'km':dist+'m');
+    return`<button class="btn ${near?'bp':'bo'} bfw" style="justify-content:space-between;padding:14px 16px" onclick="pickSite('${s.id}')">
+      <span style="font-weight:700">${s.name}</span>
+      <span style="font-size:12px;opacity:.8">${near?'📍 현재 위치':'📍 '+distTxt}</span>
+    </button>`;
+  }).join('');
+  om('m-pick');
+}
+async function pickSite(siteId) {
+  cm('m-pick');
+  await doCheckIn(siteId);
 }
 
 function openCO() {
@@ -1341,6 +1461,9 @@ function setupASel() {
     const site=cachedSites.find(s=>s.id===adminSiteId);
     sel.innerHTML=`<option value="${adminSiteId}" selected>${site?.name||'사업장'}</option>`;
     sel.disabled=true;
+  } else if(partnerScope) {
+    sel.innerHTML='<option value="">담당 전체</option>'+adminScopeSites().map(s=>`<option value="${s.id}"${s.id===cur?' selected':''}>${s.name}</option>`).join('');
+    sel.disabled=false;
   } else {
     sel.innerHTML='<option value="">전체 사업장</option>'+cachedSites.map(s=>`<option value="${s.id}"${s.id===cur?' selected':''}>${s.name}</option>`).join('');
     sel.disabled=false;
@@ -1350,8 +1473,8 @@ function setupASel() {
 function renderAH() {
   const sf=document.getElementById('asite-sel')?.value;
   const today=new Date().toDateString();
-  const tr=cachedRecords.filter(r=>new Date(r.checkIn).toDateString()===today&&(!sf||r.siteId===sf));
-  const live=cachedLiveSessions.filter(s=>s.status==='active'&&(!sf||s.siteId===sf));
+  const tr=cachedRecords.filter(r=>new Date(r.checkIn).toDateString()===today&&(!sf||r.siteId===sf)&&inAdminScope(r.siteId));
+  const live=cachedLiveSessions.filter(s=>s.status==='active'&&(!sf||s.siteId===sf)&&inAdminScope(s.siteId));
   const cout=tr.filter(r=>r.checkOut).length;
   const totalWorkers=tr.length+live.length;
   const allT=tr.reduce((a,r)=>a+Object.keys(r.tasks||{}).length,0)+live.reduce((a,s)=>a+Object.keys(s.tasks||{}).length,0);
@@ -1436,9 +1559,19 @@ function setupRF() {
     const site=cachedSites.find(s=>s.id===adminSiteId);
     sf.innerHTML=`<option value="${adminSiteId}" selected>${site?.name||'사업장'}</option>`;
     sf.disabled=true;
+  } else if(partnerScope) {
+    sf.innerHTML='<option value="">담당 전체</option>'+adminScopeSites().map(s=>`<option value="${s.id}"${s.id===cur?' selected':''}>${s.name}</option>`).join('');
+    sf.disabled=false;
   } else {
     sf.innerHTML='<option value="">전체 사업장</option>'+cachedSites.map(s=>`<option value="${s.id}"${s.id===cur?' selected':''}>${s.name}</option>`).join('');
     sf.disabled=false;
+  }
+  // 근로자 필터 (사업장 관리자는 해당 사업장 소속만)
+  const wf=document.getElementById('rf-worker');
+  if(wf) {
+    const curW=wf.value;
+    const wlist=(adminSiteId||partnerScope)?cachedWorkers.filter(w=>getWorkerSites(w).some(id=>inAdminScope(id))):cachedWorkers;
+    wf.innerHTML='<option value="">전체 근로자</option>'+wlist.map(w=>`<option value="${w.id}"${w.id===curW?' selected':''}>${w.name}</option>`).join('');
   }
   if(!document.getElementById('rf-from').value) {
     document.getElementById('rf-from').value=new Date().toISOString().slice(0,10);
@@ -1447,6 +1580,7 @@ function setupRF() {
 }
 async function renderRec() {
   const sf=document.getElementById('rf-site')?.value;
+  const wfv=document.getElementById('rf-worker')?.value;
   const from=document.getElementById('rf-from')?.value;
   const to=document.getElementById('rf-to')?.value;
   const el=document.getElementById('rec-list');
@@ -1458,7 +1592,9 @@ async function renderRec() {
     const snap=await q.get();
     let recs=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(to) recs=recs.filter(r=>r.checkIn&&r.checkIn.slice(0,10)<=to);
+    recs=recs.filter(r=>inAdminScope(r.siteId));
     if(sf) recs=recs.filter(r=>r.siteId===sf);
+    if(wfv) recs=recs.filter(r=>r.wId===wfv);
     recs=recs.slice(0,100);
     // 요약 통계
     if(recs.length) {
@@ -1590,6 +1726,8 @@ async function saveSite() {
     if(siteAdminPin===adminPin) { toast('슈퍼 관리자 PIN과 동일합니다','ng'); return; }
     const dup=cachedSites.find(s=>s.adminPin===siteAdminPin&&s.id!==eid);
     if(dup) { toast(`${dup.name} 사업장과 PIN이 중복됩니다`,'ng'); return; }
+    const pDup=cachedPartners.find(p=>p.pin===siteAdminPin);
+    if(pDup) { toast(`${pDup.name} 협력사 PIN과 중복됩니다`,'ng'); return; }
   }
   // 직무 수집
   const fields=document.querySelectorAll('.duty-field');
@@ -1624,7 +1762,7 @@ function renderSites() {
   el.innerHTML=cachedSites.map(s=>{
     const duties=getSiteDuties(s);
     const totalTasks=duties.reduce((a,d)=>(d.tasks||'').split('\n').filter(t=>t.trim()).length+a,0);
-    const workers=cachedWorkers.filter(w=>w.siteId===s.id);
+    const workers=cachedWorkers.filter(w=>getWorkerSites(w).includes(s.id));
     return`<div class="site-card">
       <div class="sch"><div><div class="scn">${s.name}</div><div class="scm">${s.address||'주소 미설정'}</div></div>
         <div style="display:flex;gap:5px"><button class="btn bo bsm" onclick="openSite('${s.id}')">수정</button><button class="btn bd bsm" onclick="delSite('${s.id}')">삭제</button></div></div>
@@ -1643,6 +1781,117 @@ async function delSite(id) {
   if(!confirm('사업장을 삭제하시겠습니까?')) return;
   try { await C.sites().doc(id).delete(); cachedSites=cachedSites.filter(s=>s.id!==id); renderSites(); toast('삭제됨'); } catch(e) { toast('삭제 실패','ng'); }
 }
+// ══════════════════════════════════════
+// PARTNERS (협력사 — 용역업체 전용 조회 계정)
+// ══════════════════════════════════════
+function renderPartners() {
+  const el=document.getElementById('partners-list');
+  if(!el) return;
+  if(!cachedPartners.length) { el.innerHTML='<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">등록된 협력사 없음</div>'; return; }
+  el.innerHTML=cachedPartners.map(p=>{
+    const names=(p.siteIds||[]).map(id=>cachedSites.find(s=>s.id===id)?.name).filter(n=>n);
+    return`<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r3);padding:10px 12px;margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-size:13px;font-weight:700">🤝 ${p.name}</span>
+        <div style="display:flex;gap:5px">
+          <button class="btn bi bsm" onclick="sharePartnerLink('${p.id}')" title="링크 보내기">📩</button>
+          <button class="btn bo bsm" onclick="openPartner('${p.id}')">수정</button>
+          <button class="btn bd bsm" onclick="delPartner('${p.id}')">삭제</button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.5">${names.length?names.join(' · '):'담당 사업장 없음'}</div>
+    </div>`;
+  }).join('');
+}
+function openPartner(id=null) {
+  const p=id?cachedPartners.find(x=>x.id===id):null;
+  document.getElementById('p-mt').textContent=p?'협력사 수정':'협력사 추가';
+  document.getElementById('p-name').value=p?.name||'';
+  document.getElementById('p-pin').value=p?.pin||'';
+  document.getElementById('p-eid').value=id||'';
+  const selected=p?.siteIds||[];
+  document.getElementById('p-sites').innerHTML=cachedSites.length?cachedSites.map(s=>
+    `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:3px 2px">
+      <input type="checkbox" class="p-site-cb" value="${s.id}"${selected.includes(s.id)?' checked':''} style="width:16px;height:16px;accent-color:var(--Y)">
+      ${s.name}
+    </label>`).join('')
+    :'<div style="font-size:12px;color:var(--muted);padding:4px">등록된 사업장 없음</div>';
+  om('m-partner');
+}
+async function savePartner() {
+  const name=document.getElementById('p-name').value.trim();
+  const pin=document.getElementById('p-pin').value.trim();
+  if(!name) { toast('협력사명 필요','ng'); return; }
+  if(pin.length!==4) { toast('PIN은 4자리여야 합니다','ng'); return; }
+  const eid=document.getElementById('p-eid').value;
+  // PIN 중복 체크 (슈퍼·사업장·타 협력사)
+  if(pin===adminPin) { toast('슈퍼 관리자 PIN과 동일합니다','ng'); return; }
+  const sDup=cachedSites.find(s=>s.adminPin===pin);
+  if(sDup) { toast(`${sDup.name} 사업장 관리자 PIN과 중복됩니다`,'ng'); return; }
+  const pDup=cachedPartners.find(p=>p.pin===pin&&p.id!==eid);
+  if(pDup) { toast(`${pDup.name} 협력사와 PIN이 중복됩니다`,'ng'); return; }
+  const siteIds=Array.from(document.querySelectorAll('.p-site-cb:checked')).map(cb=>cb.value);
+  const data={name,pin,siteIds,updatedAt:new Date().toISOString()};
+  try {
+    if(eid) await C.partners().doc(eid).update(data);
+    else await C.partners().add({...data,createdAt:new Date().toISOString()});
+    const snap=await C.partners().get();
+    cachedPartners=snap.docs.map(d=>({id:d.id,...d.data()}));
+    cm('m-partner'); renderPartners(); toast(eid?'수정됨':'협력사 추가됨','ok');
+  } catch(e) { toast('저장 실패: '+e.message,'ng'); }
+}
+async function delPartner(id) {
+  const p=cachedPartners.find(x=>x.id===id);
+  if(!confirm(`${p?.name||'협력사'}를 삭제하시겠습니까?\n(근태 기록은 유지됩니다)`)) return;
+  try {
+    await C.partners().doc(id).delete();
+    cachedPartners=cachedPartners.filter(x=>x.id!==id);
+    renderPartners(); toast('삭제됨');
+  } catch(e) { toast('삭제 실패','ng'); }
+}
+function sharePartnerLink(id) {
+  const p=cachedPartners.find(x=>x.id===id);
+  if(!p) return;
+  const base=location.href.replace(/\/[^\/]*(\?.*)?$/,'');
+  const appUrl=base+'/index.html';
+  const msg=`[브릭IFM 현장관리]\n\n${p.name} 담당 현장 근태 조회 계정입니다.\n\n📲 접속: ${appUrl}\n🔑 관리자 PIN: ${p.pin}\n\n접속 후 「관리자」 선택 → PIN 입력\n담당 현장의 실시간 현황·근무 기록을 확인할 수 있습니다.`;
+  if(navigator.share) { navigator.share({title:`${p.name} 관리자`,text:msg}).catch(()=>{}); }
+  else {
+    navigator.clipboard.writeText(msg).then(()=>toast('협력사 링크+PIN 복사됨!','ok')).catch(()=>{
+      const t=document.createElement('textarea');t.value=msg;t.style.cssText='position:fixed;left:-9999px';
+      document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);
+      toast('협력사 링크+PIN 복사됨!','ok');
+    });
+  }
+}
+// 저스트케어 기본 세팅: 담당 9개 사업장 일괄 등록 + 협력사 생성
+async function seedJustcare() {
+  const SITE_NAMES=['코스알엑스','트립닷컴','리스성형외과','팀스파르타','루엘의원','와이어트','교보증권','DB 강남','에이스엔지니어링'];
+  if(!confirm(`저스트케어 기본 세팅을 실행합니다.\n\n· 사업장 ${SITE_NAMES.length}곳 등록 (이미 있으면 건너뜀)\n· 협력사 '저스트케어' 생성 화면 열기\n\n진행할까요?`)) return;
+  toast('사업장 등록 중...','wa');
+  try {
+    let added=0;
+    for(const name of SITE_NAMES) {
+      if(cachedSites.some(s=>s.name===name)) continue;
+      await C.sites().add({name,address:'',rad:'100',lat:'',lng:'',adminPin:'',duties:[{name:'미화',tasks:''}],tasks:'',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+      added++;
+    }
+    const snap=await C.sites().orderBy('name').get();
+    cachedSites=snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderSites&&document.getElementById('sites-list')&&renderSites();
+    toast(`사업장 ${added}곳 등록 완료`,'ok');
+    // 협력사 모달 열고 저스트케어 + 9개 사업장 미리 체크
+    const existing=cachedPartners.find(p=>p.name==='저스트케어');
+    openPartner(existing?existing.id:null);
+    if(!existing) document.getElementById('p-name').value='저스트케어';
+    document.querySelectorAll('.p-site-cb').forEach(cb=>{
+      const sName=cachedSites.find(s=>s.id===cb.value)?.name;
+      if(SITE_NAMES.includes(sName)) cb.checked=true;
+    });
+    toast('PIN 4자리만 입력하고 저장하세요','wa');
+  } catch(e) { toast('세팅 실패: '+e.message,'ng'); console.warn(e); }
+}
+
 function shareSiteAdminLink(siteName, pin) {
   const base=location.href.replace(/\/[^\/]*(\?.*)?$/,'');
   const appUrl=base+'/index.html';
@@ -1669,30 +1918,44 @@ function openWorker(id=null) {
   document.getElementById('w-name').value=w?.name||'';
   document.getElementById('w-pin').value=w?.pin||'';
   document.getElementById('w-eid').value=id||'';
-  document.getElementById('w-site').innerHTML='<option value="">미지정</option>'+cachedSites.map(s=>`<option value="${s.id}"${w?.siteId===s.id?' selected':''}>${s.name}</option>`).join('');
+  // 사업장 체크박스 (다중 선택)
+  const selected=w?getWorkerSites(w):[];
+  document.getElementById('w-sites').innerHTML=cachedSites.length?cachedSites.map(s=>
+    `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:3px 2px">
+      <input type="checkbox" class="w-site-cb" value="${s.id}"${selected.includes(s.id)?' checked':''} onchange="updateDutySelect()" style="width:16px;height:16px;accent-color:var(--Y)">
+      ${s.name}
+    </label>`).join('')
+    :'<div style="font-size:12px;color:var(--muted);padding:4px">등록된 사업장 없음</div>';
   updateDutySelect(w?.duty||'');
   om('m-worker');
 }
+function getCheckedSites() {
+  return Array.from(document.querySelectorAll('.w-site-cb:checked')).map(cb=>cb.value);
+}
 function updateDutySelect(selDuty) {
-  const siteId=document.getElementById('w-site').value;
+  const siteIds=getCheckedSites();
   const sel=document.getElementById('w-duty');
-  const site=cachedSites.find(s=>s.id===siteId);
-  const duties=site?getSiteDuties(site):[];
-  if(duties.length<=1) {
+  // 선택된 사업장들의 직무명 합집합
+  const dutyNames=[...new Set(siteIds.flatMap(id=>{
+    const site=cachedSites.find(s=>s.id===id);
+    return site?getSiteDuties(site).map(d=>d.name):[];
+  }))].filter(n=>n&&n!=='기본');
+  if(!dutyNames.length) {
     sel.innerHTML='<option value="">전체 (기본)</option>';
-    sel.closest('.fg').style.display=duties.length<=1?'none':'block';
+    sel.closest('.fg').style.display='none';
     return;
   }
   sel.closest('.fg').style.display='block';
   const sv=typeof selDuty==='string'?selDuty:(sel.value||'');
-  sel.innerHTML='<option value="">전체</option>'+duties.map(d=>`<option value="${d.name}"${d.name===sv?' selected':''}>${d.name}</option>`).join('');
+  sel.innerHTML='<option value="">전체</option>'+dutyNames.map(n=>`<option value="${n}"${n===sv?' selected':''}>${n}</option>`).join('');
 }
 async function saveWorker() {
   const name=document.getElementById('w-name').value.trim(), pin=document.getElementById('w-pin').value.trim();
   if(!name) { toast('이름 입력 필요','ng'); return; }
   if(pin.length!==4) { toast('PIN은 4자리여야 합니다','ng'); return; }
   const eid=document.getElementById('w-eid').value;
-  const data={name,pin,siteId:document.getElementById('w-site').value,duty:document.getElementById('w-duty').value,updatedAt:new Date().toISOString()};
+  const siteIds=getCheckedSites();
+  const data={name,pin,siteIds,siteId:siteIds[0]||'',duty:document.getElementById('w-duty').value,updatedAt:new Date().toISOString()};
   try {
     if(eid) await C.workers().doc(eid).update(data);
     else await C.workers().add({...data,createdAt:new Date().toISOString()});
@@ -1703,16 +1966,18 @@ async function saveWorker() {
 }
 function renderWorkers() {
   const el=document.getElementById('workers-list');
-  const list=adminSiteId?cachedWorkers.filter(w=>w.siteId===adminSiteId):cachedWorkers;
+  const list=cachedWorkers.filter(w=>(adminSiteId||partnerScope)?getWorkerSites(w).some(id=>inAdminScope(id)):true);
   if(!list.length) { el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">등록된 근로자 없음</div></div>'; return; }
   el.innerHTML=list.map((w,i)=>{
-    const s=cachedSites.find(x=>x.id===w.siteId);
+    const siteIds=getWorkerSites(w);
+    const siteNames=siteIds.map(id=>cachedSites.find(x=>x.id===id)?.name).filter(n=>n);
+    const siteLabel=siteNames.length>1?`${siteNames[0]} 외 ${siteNames.length-1}곳`:(siteNames[0]||'사업장 미지정');
     const dutyLabel=w.duty?` · ${w.duty}`:'';
     return`<div class="wr">
       <div class="wa2" style="background:${wc(i)}">${ini(w.name)}</div>
-      <div class="wi2"><div class="wn2">${w.name}</div><div class="ws2">${s?.name||'사업장 미지정'}${dutyLabel}</div></div>
+      <div class="wi2"><div class="wn2">${w.name}</div><div class="ws2" title="${siteNames.join(', ')}">${siteLabel}${dutyLabel}</div></div>
       <button class="btn bi bsm" onclick="shareWorkerLink('${w.id}','${w.name}','${w.pin}')" title="링크 보내기">📩</button>
-      ${!adminSiteId?`<button class="btn bo bsm" onclick="openWorker('${w.id}')">수정</button><button class="btn bd bsm" onclick="delWorker('${w.id}')">삭제</button>`:''}
+      ${(!adminSiteId&&!partnerScope)?`<button class="btn bo bsm" onclick="openWorker('${w.id}')">수정</button><button class="btn bd bsm" onclick="delWorker('${w.id}')">삭제</button>`:''}
     </div>`;
   }).join('');
 }
